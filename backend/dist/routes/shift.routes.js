@@ -1,0 +1,11 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const shift_controller_1 = require("../controllers/shift.controller");
+const auth_middleware_1 = require("../middleware/auth.middleware");
+const router = (0, express_1.Router)();
+router.use(auth_middleware_1.authenticate);
+router.get('/', shift_controller_1.ShiftController.getShifts);
+router.get('/:id', shift_controller_1.ShiftController.getShiftById);
+router.delete('/:id', shift_controller_1.ShiftController.deleteShift);
+exports.default = router;
