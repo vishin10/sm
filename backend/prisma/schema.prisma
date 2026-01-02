@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String   // bcrypt hashed
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  stores    Store[]
+}
+
+model Store {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  timezone  String    @default("America/New_York")
+  deviceKey String    @unique // for XML uploads
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  shifts    Shift[]
+  alerts    Alert[]
+  insights  Insight[]
+
+  @@index([userId])
+}
+
+model Shift {
+  id             String           @id @default(cuid())
+  storeId        String
+  store          Store            @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  registerId     String?
+  operatorId     String?
+  startAt        DateTime?
+  endAt          DateTime?
+  totalSales     Decimal          @db.Decimal(10, 2)
+  fuelSales      Decimal          @db.Decimal(10, 2)
+  nonFuelSales   Decimal          @db.Decimal(10, 2)
+  refunds        Decimal          @db.Decimal(10, 2)
+  voidCount      Int              @default(0)
+  discountTotal  Decimal          @db.Decimal(10, 2)
+  taxTotal       Decimal          @db.Decimal(10, 2)
+  customerCount  Int?
+  cashVariance   Decimal          @db.Decimal(10, 2) // positive = over, negative = short
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  departments    DepartmentSale[]
+  alerts         Alert[]
+
+  @@index([storeId])
+  @@index([startAt])
+}
+
+model DepartmentSale {
+  id             String  @id @default(cuid())
+  shiftId        String
+  shift          Shift   @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  departmentName String
+  amount         Decimal @db.Decimal(10, 2)
+
+  @@index([shiftId])
+}
+
+model Alert {
+  id         String    @id @default(cuid())
+  storeId    String
+  store      Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  shiftId    String?
+  shift      Shift?    @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  severity   String    // 'info' | 'warn' | 'critical'
+  type       String    // 'cash_variance' | 'high_voids' | 'high_refunds' | 'dept_spike' | etc.
+  title      String
+  message    String    @db.Text
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  @@index([storeId])
+  @@index([severity])
+  @@index([resolvedAt])
+}
+
+model Insight {
+  id           String   @id @default(cuid())
+  storeId      String
+  store        Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  title        String
+  message      String   @db.Text
+  metricValue  String?  // optional value to display (e.g., "$1,234.56")
+  periodLabel  String?  // e.g., "Last 7 Days"
+  severity     String?  // 'positive' | 'neutral' | 'negative'
+  createdAt    DateTime @default(now())
+
+  @@index([storeId])
+}

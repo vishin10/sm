@@ -1,0 +1,22 @@
+{
+    "expo": {
+        "name": "Silent Manager",
+        "slug": "silentmanager",
+        "version": "1.0.0",
+        "orientation": "portrait",
+        "userInterfaceStyle": "dark",
+        "newArchEnabled": false,
+        "ios": {
+            "supportsTablet": true
+        },
+        "android": {
+            "adaptiveIcon": {
+                "backgroundColor": "#0F172A"
+            }
+        },
+        "web": {
+            "favicon": "./assets/favicon.png",
+            "bundler": "metro"
+        }
+    }
+}
