@@ -1,7 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, RefreshControl, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { colors, getThemeColors } from '../../theme/colors';
 import { useThemeStore } from '../../store/themeStore';
+import { useStoreStore } from '../../store/storeStore';
 import { LineChart, PieChart } from 'react-native-chart-kit';
 import axios from 'axios';
 import { API_URL } from '../../constants/config';
@@ -10,8 +13,14 @@ import { useAuthStore } from '../../store/authStore';
 const screenWidth = Dimensions.get('window').width;
 
 export default function InsightsScreen() {
+    const navigation = useNavigation();
     const { theme } = useThemeStore();
     const themeColors = getThemeColors(theme);
+    const { selectedStore } = useStoreStore();
+
+    const handleGoBack = () => {
+        (navigation as any).navigate('Tabs');
+    };
     const [trends, setTrends] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -28,8 +37,10 @@ export default function InsightsScreen() {
     };
 
     const fetchTrends = async () => {
+        if (!selectedStore) return;
         try {
             const response = await axios.get(`${API_URL}/insights/trends`, {
+                params: { storeId: selectedStore.id },
                 headers: { Authorization: `Bearer ${token}` }
             });
             setTrends(response.data);
@@ -42,8 +53,11 @@ export default function InsightsScreen() {
     };
 
     useEffect(() => {
-        fetchTrends();
-    }, []);
+        if (selectedStore) {
+            setLoading(true);
+            fetchTrends();
+        }
+    }, [selectedStore?.id]);
 
     const onRefresh = () => {
         setRefreshing(true);
@@ -83,6 +97,9 @@ export default function InsightsScreen() {
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary[500]} />}
         >
             <View style={styles.header}>
+                <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
+                    <Ionicons name="arrow-back" size={24} color={themeColors.textPrimary} />
+                </TouchableOpacity>
                 <Text style={styles.title}>Performance</Text>
             </View>
 
@@ -138,8 +155,14 @@ const createStyles = (themeColors: ReturnType<typeof getThemeColors>) => StyleSh
         alignItems: 'center',
     },
     header: {
+        flexDirection: 'row',
+        alignItems: 'center',
         padding: 20,
         paddingTop: 60,
+    },
+    backButton: {
+        marginRight: 12,
+        padding: 4,
     },
     title: {
         fontSize: 28,

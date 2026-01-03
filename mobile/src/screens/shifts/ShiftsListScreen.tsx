@@ -1,21 +1,33 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { colors, getThemeColors } from '../../theme/colors';
 import { useThemeStore } from '../../store/themeStore';
+import { useStoreStore } from '../../store/storeStore';
 import { shiftsApi, Shift } from '../../api/shifts';
 import { format, parseISO } from 'date-fns';
 
-export default function ShiftsListScreen({ navigation }: any) {
+export default function ShiftsListScreen({ navigation: stackNav }: any) {
+    const navigation = useNavigation();
     const { theme } = useThemeStore();
     const themeColors = getThemeColors(theme);
+    const { selectedStore } = useStoreStore();
+
+    const handleGoBack = () => {
+        (navigation as any).navigate('Tabs');
+    };
     const [shifts, setShifts] = useState<Shift[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
     const fetchShifts = async () => {
+        if (!selectedStore) return;
         try {
-            const response = await shiftsApi.getShifts({ limit: 20 });
+            const response = await shiftsApi.getShifts({
+                storeId: selectedStore.id,
+                limit: 20
+            });
             setShifts(response.shifts);
         } catch (error) {
             console.error('Error fetching shifts:', error);
@@ -26,8 +38,11 @@ export default function ShiftsListScreen({ navigation }: any) {
     };
 
     useEffect(() => {
-        fetchShifts();
-    }, []);
+        if (selectedStore) {
+            setLoading(true);
+            fetchShifts();
+        }
+    }, [selectedStore?.id]);
 
     const onRefresh = useCallback(() => {
         setRefreshing(true);
@@ -57,7 +72,7 @@ export default function ShiftsListScreen({ navigation }: any) {
         return (
             <TouchableOpacity
                 style={styles.card}
-                onPress={() => navigation.navigate('ShiftDetail', {
+                onPress={() => stackNav.navigate('ShiftDetail', {
                     shift: {
                         ...item,
                         date: formatDate(item.startAt),
@@ -123,7 +138,12 @@ export default function ShiftsListScreen({ navigation }: any) {
     return (
         <View style={styles.container}>
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>Recent Shifts</Text>
+                <View style={styles.headerRow}>
+                    <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
+                        <Ionicons name="arrow-back" size={24} color={themeColors.textPrimary} />
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>Recent Shifts</Text>
+                </View>
                 <Text style={styles.headerSubtitle}>{shifts.length} shifts found</Text>
             </View>
             <FlatList
@@ -162,6 +182,14 @@ const createStyles = (themeColors: ReturnType<typeof getThemeColors>) => StyleSh
         paddingHorizontal: 20,
         paddingBottom: 16,
         backgroundColor: themeColors.surface,
+    },
+    headerRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    backButton: {
+        marginRight: 12,
+        padding: 4,
     },
     headerTitle: {
         fontSize: 28,

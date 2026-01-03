@@ -1,7 +1,10 @@
 import React, { useState, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, FlatList, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { colors, getThemeColors } from '../../theme/colors';
 import { useThemeStore } from '../../store/themeStore';
+import { useStoreStore } from '../../store/storeStore';
 import { API_URL } from '../../constants/config';
 import { useAuthStore } from '../../store/authStore';
 import axios from 'axios';
@@ -16,9 +19,11 @@ interface Message {
 export default function ChatScreen() {
     const { theme } = useThemeStore();
     const themeColors = getThemeColors(theme);
+    const navigation = useNavigation();
+    const { selectedStore } = useStoreStore();
     const [input, setInput] = useState('');
     const [messages, setMessages] = useState<Message[]>([
-        { id: '1', text: 'Hello! I am your Silent Manager. Ask me about your sales, alerts, or shifts.', sender: 'ai', timestamp: new Date() }
+        { id: '1', text: `Hello! I am your Silent Manager assistant for ${selectedStore?.name || 'your store'}. Ask me about sales, alerts, or shifts.`, sender: 'ai', timestamp: new Date() }
     ]);
     const [loading, setLoading] = useState(false);
     const flatListRef = useRef<FlatList>(null);
@@ -41,7 +46,10 @@ export default function ChatScreen() {
         try {
             const response = await axios.post(
                 `${API_URL}/chat`,
-                { message: userMsg.text },
+                {
+                    message: userMsg.text,
+                    storeId: selectedStore?.id // Include store context
+                },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
 
@@ -75,7 +83,15 @@ export default function ChatScreen() {
             keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
         >
             <View style={styles.header}>
-                <Text style={styles.headerTitle}>Assistant</Text>
+                <View>
+                    <Text style={styles.headerTitle}>Assistant</Text>
+                    {selectedStore && (
+                        <Text style={styles.headerSubtitle}>{selectedStore.name}</Text>
+                    )}
+                </View>
+                <TouchableOpacity style={styles.menuButton} onPress={() => navigation.dispatch(DrawerActions.openDrawer())}>
+                    <Ionicons name="menu" size={24} color={colors.primary[500]} />
+                </TouchableOpacity>
             </View>
 
             <FlatList
@@ -133,11 +149,22 @@ const createStyles = (themeColors: ReturnType<typeof getThemeColors>) => StyleSh
         backgroundColor: themeColors.surface,
         borderBottomWidth: 1,
         borderBottomColor: themeColors.border,
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
     },
     headerTitle: {
         fontSize: 24,
         fontWeight: 'bold',
         color: themeColors.textPrimary,
+    },
+    headerSubtitle: {
+        fontSize: 13,
+        color: themeColors.textSecondary,
+        marginTop: 2,
+    },
+    menuButton: {
+        padding: 8,
     },
     list: {
         padding: 16,

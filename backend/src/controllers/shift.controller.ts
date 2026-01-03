@@ -5,11 +5,22 @@ export class ShiftController {
     static async getShifts(req: Request, res: Response, next: NextFunction) {
         try {
             const userId = (req as any).user.id;
-            const { startDate, endDate, limit = 20, offset = 0 } = req.query;
+            const { storeId, startDate, endDate, limit = 20, offset = 0 } = req.query;
 
             // Ensure user owns the stores
             const userStores = await prisma.store.findMany({ where: { userId }, select: { id: true } });
-            const storeIds = userStores.map(s => s.id);
+            const userStoreIds = userStores.map(s => s.id);
+
+            // If storeId is provided, verify user owns it and filter to that store
+            let storeIds: string[];
+            if (storeId) {
+                if (!userStoreIds.includes(storeId as string)) {
+                    return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Access denied to this store' } });
+                }
+                storeIds = [storeId as string];
+            } else {
+                storeIds = userStoreIds;
+            }
 
             const where: any = {
                 storeId: { in: storeIds },

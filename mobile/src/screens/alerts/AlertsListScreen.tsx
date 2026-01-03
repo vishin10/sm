@@ -1,21 +1,30 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, ActivityIndicator, RefreshControl, Alert as RNAlert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { colors, getThemeColors } from '../../theme/colors';
 import { useThemeStore } from '../../store/themeStore';
+import { useStoreStore } from '../../store/storeStore';
 import { alertsApi, Alert } from '../../api/alerts';
 import { parseISO, formatDistanceToNow } from 'date-fns';
 
 export default function AlertsListScreen() {
+    const navigation = useNavigation();
     const { theme } = useThemeStore();
     const themeColors = getThemeColors(theme);
+    const { selectedStore } = useStoreStore();
+
+    const handleGoBack = () => {
+        (navigation as any).navigate('Tabs');
+    };
     const [alerts, setAlerts] = useState<Alert[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
 
     const fetchAlerts = async () => {
+        if (!selectedStore) return;
         try {
-            const response = await alertsApi.getAlerts();
+            const response = await alertsApi.getAlerts({ storeId: selectedStore.id });
             setAlerts(response.alerts);
         } catch (error) {
             console.error('Error fetching alerts:', error);
@@ -26,13 +35,16 @@ export default function AlertsListScreen() {
     };
 
     useEffect(() => {
-        fetchAlerts();
-    }, []);
+        if (selectedStore) {
+            setLoading(true);
+            fetchAlerts();
+        }
+    }, [selectedStore?.id]);
 
     const onRefresh = useCallback(() => {
         setRefreshing(true);
         fetchAlerts();
-    }, []);
+    }, [selectedStore?.id]);
 
     const handleResolve = async (id: string) => {
         try {
@@ -121,7 +133,12 @@ export default function AlertsListScreen() {
     return (
         <View style={styles.container}>
             <View style={styles.headerSection}>
-                <Text style={styles.headerTitle}>Alerts</Text>
+                <View style={styles.headerRow}>
+                    <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
+                        <Ionicons name="arrow-back" size={24} color={themeColors.textPrimary} />
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>Alerts</Text>
+                </View>
                 <View style={styles.statsRow}>
                     <View style={styles.statBadge}>
                         <Text style={styles.statNumber}>{unresolvedAlerts.length}</Text>
@@ -172,11 +189,19 @@ const createStyles = (themeColors: ReturnType<typeof getThemeColors>) => StyleSh
         paddingBottom: 16,
         backgroundColor: themeColors.surface,
     },
+    headerRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
+    },
+    backButton: {
+        marginRight: 12,
+        padding: 4,
+    },
     headerTitle: {
         fontSize: 28,
         fontWeight: 'bold',
         color: themeColors.textPrimary,
-        marginBottom: 12,
     },
     statsRow: {
         flexDirection: 'row',

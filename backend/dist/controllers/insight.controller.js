@@ -17,13 +17,16 @@ class InsightController {
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 const userId = req.user.id;
+                const { storeId } = req.query;
                 const userStores = yield database_1.prisma.store.findMany({ where: { userId } });
-                // For now, generate insights on the fly for the first store found (MVP limitation/simplification)
-                // In real app, might aggregate or ask for storeId
+                const userStoreIds = userStores.map(s => s.id);
                 if (userStores.length === 0) {
                     return res.json({ insights: [] });
                 }
-                const storeId = userStores[0].id; // Primary store
+                // If storeId provided, verify user owns it
+                if (storeId && !userStoreIds.includes(storeId)) {
+                    return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Access denied to this store' } });
+                }
                 // Generate fresh insights
                 const insights = yield AnalyticsService_1.AnalyticsService.generateInsights(userId);
                 res.json(insights);
@@ -37,12 +40,24 @@ class InsightController {
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 const userId = req.user.id;
-                // For MVP, just picking the first store for the user context
-                const userStores = yield database_1.prisma.store.findMany({ where: { userId }, take: 1 });
+                const { storeId } = req.query;
+                const userStores = yield database_1.prisma.store.findMany({ where: { userId } });
+                const userStoreIds = userStores.map(s => s.id);
                 if (userStores.length === 0) {
                     return res.json({ salesTrend: { labels: [], datasets: [] }, categoryBreakdown: { labels: [], data: [] } });
                 }
-                const trends = yield AnalyticsService_1.AnalyticsService.getTrends(userStores[0].id);
+                // If storeId provided, verify user owns it and use it; otherwise use first store
+                let targetStoreId;
+                if (storeId) {
+                    if (!userStoreIds.includes(storeId)) {
+                        return res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Access denied to this store' } });
+                    }
+                    targetStoreId = storeId;
+                }
+                else {
+                    targetStoreId = userStores[0].id;
+                }
+                const trends = yield AnalyticsService_1.AnalyticsService.getTrends(targetStoreId);
                 res.json(trends);
             }
             catch (error) {

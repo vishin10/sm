@@ -17,17 +17,18 @@ model User {
 }
 
 model Store {
-  id        String    @id @default(cuid())
-  userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name      String
-  timezone  String    @default("America/New_York")
-  deviceKey String    @unique // for XML uploads
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  shifts    Shift[]
-  alerts    Alert[]
-  insights  Insight[]
+  id           String        @id @default(cuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  timezone     String        @default("America/New_York")
+  deviceKey    String        @unique // for XML uploads
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  shifts       Shift[]
+  alerts       Alert[]
+  insights     Insight[]
+  shiftReports ShiftReport[]
 
   @@index([userId])
 }
@@ -48,7 +49,7 @@ model Shift {
   discountTotal  Decimal          @db.Decimal(10, 2)
   taxTotal       Decimal          @db.Decimal(10, 2)
   customerCount  Int?
-  cashVariance   Decimal          @db.Decimal(10, 2) // positive = over, negative = short
+  cashVariance   Decimal          @db.Decimal(10, 2)
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
   departments    DepartmentSale[]
@@ -74,8 +75,8 @@ model Alert {
   store      Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
   shiftId    String?
   shift      Shift?    @relation(fields: [shiftId], references: [id], onDelete: SetNull)
-  severity   String    // 'info' | 'warn' | 'critical'
-  type       String    // 'cash_variance' | 'high_voids' | 'high_refunds' | 'dept_spike' | etc.
+  severity   String
+  type       String
   title      String
   message    String    @db.Text
   createdAt  DateTime  @default(now())
@@ -92,10 +93,127 @@ model Insight {
   store        Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
   title        String
   message      String   @db.Text
-  metricValue  String?  // optional value to display (e.g., "$1,234.56")
-  periodLabel  String?  // e.g., "Last 7 Days"
-  severity     String?  // 'positive' | 'neutral' | 'negative'
+  metricValue  String?
+  periodLabel  String?
+  severity     String?
   createdAt    DateTime @default(now())
 
   @@index([storeId])
+}
+
+// ============================================
+// SHIFT REPORT EXTRACTION MODELS
+// ============================================
+
+model ShiftReport {
+  id                    String   @id @default(cuid())
+  storeId               String
+  store                 Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  
+  receiptHash           String   @unique
+  registerId            String?
+  operatorId            String?
+  tillId                String?
+  
+  reportDate            DateTime
+  shiftStart            DateTime?
+  shiftEnd              DateTime?
+  printedAt             DateTime?
+  
+  beginningBalance      Decimal?  @db.Decimal(12, 2)
+  endingBalance         Decimal?  @db.Decimal(12, 2)
+  closingAccountability Decimal?  @db.Decimal(12, 2)
+  cashierCounted        Decimal?  @db.Decimal(12, 2)
+  cashVariance          Decimal?  @db.Decimal(12, 2)
+  
+  grossSales            Decimal?  @db.Decimal(12, 2)
+  netSales              Decimal?  @db.Decimal(12, 2)
+  refunds               Decimal?  @db.Decimal(12, 2)
+  discounts             Decimal?  @db.Decimal(12, 2)
+  taxTotal              Decimal?  @db.Decimal(12, 2)
+  totalTransactions     Int?
+  
+  fuelSales             Decimal?  @db.Decimal(12, 2)
+  fuelGross             Decimal?  @db.Decimal(12, 2)
+  fuelGallons           Decimal?  @db.Decimal(12, 3)
+  
+  insideSales           Decimal?  @db.Decimal(12, 2)
+  merchandiseSales      Decimal?  @db.Decimal(12, 2)
+  
+  prepaysInitiated      Decimal?  @db.Decimal(12, 2)
+  prepaysPumped         Decimal?  @db.Decimal(12, 2)
+  
+  cashCount             Int?
+  cashAmount            Decimal?  @db.Decimal(12, 2)
+  creditCount           Int?
+  creditAmount          Decimal?  @db.Decimal(12, 2)
+  debitCount            Int?
+  debitAmount           Decimal?  @db.Decimal(12, 2)
+  checkCount            Int?
+  checkAmount           Decimal?  @db.Decimal(12, 2)
+  ebtCount              Int?
+  ebtAmount             Decimal?  @db.Decimal(12, 2)
+  otherTenderCount      Int?
+  otherTenderAmount     Decimal?  @db.Decimal(12, 2)
+  totalTenders          Decimal?  @db.Decimal(12, 2)
+  
+  safeDropCount         Int?
+  safeDropAmount        Decimal?  @db.Decimal(12, 2)
+  safeLoanCount         Int?
+  safeLoanAmount        Decimal?  @db.Decimal(12, 2)
+  paidInCount           Int?
+  paidInAmount          Decimal?  @db.Decimal(12, 2)
+  paidOutCount          Int?
+  paidOutAmount         Decimal?  @db.Decimal(12, 2)
+  
+  rawText               String    @db.Text
+  extractionMethod      String
+  extractionConfidence  Float     @default(0)
+  
+  createdAt             DateTime  @default(now())
+  
+  departments           ShiftReportDepartment[]
+  items                 ShiftReportItem[]
+  exceptions            ShiftReportException[]
+
+  @@index([storeId])
+  @@index([reportDate])
+  @@index([shiftStart])
+}
+
+model ShiftReportDepartment {
+  id             String      @id @default(cuid())
+  shiftReportId  String
+  shiftReport    ShiftReport @relation(fields: [shiftReportId], references: [id], onDelete: Cascade)
+  departmentName String
+  quantity       Int?
+  amount         Decimal     @db.Decimal(12, 2)
+
+  @@index([shiftReportId])
+  @@index([departmentName])
+}
+
+model ShiftReportItem {
+  id             String      @id @default(cuid())
+  shiftReportId  String
+  shiftReport    ShiftReport @relation(fields: [shiftReportId], references: [id], onDelete: Cascade)
+  itemName       String
+  sku            String?
+  quantity       Int?
+  amount         Decimal     @db.Decimal(12, 2)
+
+  @@index([shiftReportId])
+  @@index([itemName])
+}
+
+model ShiftReportException {
+  id             String      @id @default(cuid())
+  shiftReportId  String
+  shiftReport    ShiftReport @relation(fields: [shiftReportId], references: [id], onDelete: Cascade)
+  type           String
+  count          Int         @default(0)
+  amount         Decimal?    @db.Decimal(12, 2)
+
+  @@index([shiftReportId])
+  @@index([type])
 }

@@ -1,15 +1,22 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, Switch } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { colors, getThemeColors } from '../../theme/colors';
 import { useAuthStore } from '../../store/authStore';
 import { useThemeStore } from '../../store/themeStore';
 
 export default function SettingsScreen() {
+    const navigation = useNavigation();
     const { user, logout } = useAuthStore();
     const { theme, toggleTheme } = useThemeStore();
     const themeColors = getThemeColors(theme);
     const isDarkMode = theme === 'dark';
+
+    const handleGoBack = () => {
+        // Navigate to Tabs (Dashboard) screen in the drawer
+        (navigation as any).navigate('Tabs');
+    };
 
     const handleLogout = () => {
         Alert.alert(
@@ -33,6 +40,9 @@ export default function SettingsScreen() {
     return (
         <View style={styles.container}>
             <View style={styles.header}>
+                <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
+                    <Ionicons name="arrow-back" size={24} color={themeColors.textPrimary} />
+                </TouchableOpacity>
                 <Text style={styles.title}>Settings</Text>
             </View>
 
@@ -83,7 +93,7 @@ export default function SettingsScreen() {
 
                         <View style={styles.divider} />
 
-                        <TouchableOpacity style={styles.menuItem}>
+                        <TouchableOpacity style={styles.menuItem} onPress={() => (navigation as any).navigate('ManageStores')}>
                             <Ionicons name="storefront-outline" size={22} color={themeColors.textPrimary} />
                             <Text style={styles.menuText}>Manage Stores</Text>
                             <Ionicons name="chevron-forward" size={20} color={themeColors.textSecondary} />
@@ -138,9 +148,15 @@ const createStyles = (themeColors: ReturnType<typeof getThemeColors>) => StyleSh
         backgroundColor: themeColors.background,
     },
     header: {
+        flexDirection: 'row',
+        alignItems: 'center',
         padding: 20,
         paddingTop: 60,
         backgroundColor: themeColors.surface,
+    },
+    backButton: {
+        marginRight: 12,
+        padding: 4,
     },
     title: {
         fontSize: 28,

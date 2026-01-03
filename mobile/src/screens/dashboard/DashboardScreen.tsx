@@ -1,8 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, RefreshControl, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { colors, getThemeColors } from '../../theme/colors';
 import { useThemeStore } from '../../store/themeStore';
+import { useStoreStore } from '../../store/storeStore';
 import { shiftsApi, alertsApi, storesApi } from '../../api';
 import { format } from 'date-fns';
 
@@ -16,9 +18,10 @@ interface DashboardData {
 export default function DashboardScreen() {
     const { theme } = useThemeStore();
     const themeColors = getThemeColors(theme);
+    const navigation = useNavigation();
+    const { selectedStore, loadSelectedStore, stores } = useStoreStore();
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [storeName, setStoreName] = useState('My Store');
     const [data, setData] = useState<DashboardData>({
         todaySales: 0,
         transactionCount: 0,
@@ -26,26 +29,42 @@ export default function DashboardScreen() {
         cashVariance: 0,
     });
 
-    const fetchData = async () => {
+    const fetchStoresAndData = async () => {
         try {
-            // Fetch stores
-            const storesRes = await storesApi.getStores();
-            if (storesRes.stores.length > 0) {
-                setStoreName(storesRes.stores[0].name);
+            // First load stores if not already loaded
+            if (stores.length === 0) {
+                const storesRes = await storesApi.getStores();
+                await loadSelectedStore(storesRes.stores);
             }
+        } catch (error) {
+            console.error('Error loading stores:', error);
+        }
+    };
 
-            // Fetch today's shifts
+    const fetchDashboardData = async () => {
+        if (!selectedStore) return;
+
+        try {
+            // Fetch today's shifts for selected store
             const today = new Date();
             const startDate = format(today, 'yyyy-MM-dd');
-            const shiftsRes = await shiftsApi.getShifts({ startDate, endDate: startDate });
+            const shiftsRes = await shiftsApi.getShifts({
+                storeId: selectedStore.id,
+                startDate,
+                endDate: startDate
+            });
 
             // Calculate totals
             const todaySales = shiftsRes.shifts.reduce((sum, s) => sum + parseFloat(s.totalSales || '0'), 0);
             const cashVariance = shiftsRes.shifts.reduce((sum, s) => sum + parseFloat(s.cashVariance || '0'), 0);
             const transactionCount = shiftsRes.shifts.reduce((sum, s) => sum + (s.customerCount || 0), 0);
 
-            // Fetch alerts
-            const alertsRes = await alertsApi.getAlerts({ severity: 'critical', resolved: false });
+            // Fetch alerts for selected store
+            const alertsRes = await alertsApi.getAlerts({
+                storeId: selectedStore.id,
+                severity: 'critical',
+                resolved: false
+            });
 
             setData({
                 todaySales,
@@ -55,7 +74,6 @@ export default function DashboardScreen() {
             });
         } catch (error) {
             console.error('Dashboard fetch error:', error);
-            // Keep default values on error
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -63,13 +81,20 @@ export default function DashboardScreen() {
     };
 
     useEffect(() => {
-        fetchData();
+        fetchStoresAndData();
     }, []);
+
+    useEffect(() => {
+        if (selectedStore) {
+            setLoading(true);
+            fetchDashboardData();
+        }
+    }, [selectedStore?.id]);
 
     const onRefresh = useCallback(() => {
         setRefreshing(true);
-        fetchData();
-    }, []);
+        fetchDashboardData();
+    }, [selectedStore?.id]);
 
     const formatCurrency = (value: number) => {
         return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
@@ -89,12 +114,17 @@ export default function DashboardScreen() {
         <View style={styles.container}>
             <View style={styles.header}>
                 <View>
-                    <Text style={styles.storeName}>{storeName}</Text>
+                    <Text style={styles.storeName}>{selectedStore?.name || 'My Store'}</Text>
                     <Text style={styles.date}>{format(new Date(), 'EEEE, MMMM d, yyyy')}</Text>
                 </View>
-                <TouchableOpacity style={styles.refreshButton} onPress={onRefresh}>
-                    <Ionicons name="refresh" size={22} color={colors.primary[500]} />
-                </TouchableOpacity>
+                <View style={styles.headerActions}>
+                    <TouchableOpacity style={styles.headerButton} onPress={onRefresh}>
+                        <Ionicons name="refresh" size={22} color={colors.primary[500]} />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.headerButton} onPress={() => navigation.dispatch(DrawerActions.openDrawer())}>
+                        <Ionicons name="menu" size={24} color={colors.primary[500]} />
+                    </TouchableOpacity>
+                </View>
             </View>
 
             <ScrollView
@@ -149,9 +179,13 @@ export default function DashboardScreen() {
                         <Ionicons name="add-circle" size={28} color={colors.primary[500]} />
                         <Text style={styles.actionText}>Add Shift</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.actionCard}>
-                        <Ionicons name="cloud-upload" size={28} color={colors.primary[500]} />
-                        <Text style={styles.actionText}>Import Data</Text>
+                    <TouchableOpacity
+                        style={styles.actionCard}
+                        onPress={() => (navigation as any).navigate('UploadShiftReport')}
+                    >
+                        <Ionicons name="camera" size={28} color={colors.primary[500]} />
+                        <Text style={styles.actionText}>📤 Upload</Text>
+                        <Text style={styles.actionSubtext}>Shift Report</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.actionCard}>
                         <Ionicons name="document-text" size={28} color={colors.primary[500]} />
@@ -203,8 +237,13 @@ const createStyles = (themeColors: ReturnType<typeof getThemeColors>) => StyleSh
         color: themeColors.textSecondary,
         marginTop: 4,
     },
-    refreshButton: {
+    headerActions: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    headerButton: {
         padding: 8,
+        marginLeft: 4,
     },
     content: {
         padding: 16,
@@ -269,6 +308,12 @@ const createStyles = (themeColors: ReturnType<typeof getThemeColors>) => StyleSh
         color: themeColors.textPrimary,
         fontSize: 12,
         marginTop: 8,
+        textAlign: 'center',
+    },
+    actionSubtext: {
+        color: themeColors.textSecondary,
+        fontSize: 10,
+        marginTop: 2,
         textAlign: 'center',
     },
     insightRow: {

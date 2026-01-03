@@ -15,6 +15,8 @@ import alertRoutes from './routes/alert.routes';
 import insightRoutes from './routes/insight.routes';
 import chatRoutes from './routes/chat.routes';
 import reportRoutes from './routes/report.routes';
+import shiftAnalysisRoutes from './routes/shiftAnalysis.routes';
+import shiftReportRoutes from './routes/shiftReport.routes';
 
 dotenv.config();
 
@@ -27,8 +29,8 @@ app.use(cors({
     origin: process.env.CORS_ORIGIN?.split(',') || '*',
     credentials: true
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' })); // Increased limit for image uploads
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Rate limiting (Basic placeholder, will implement robust one in middleware)
 // app.use(rateLimiter); 
@@ -42,6 +44,8 @@ app.use('/alerts', alertRoutes);
 app.use('/insights', insightRoutes);
 app.use('/chat', chatRoutes);
 app.use('/reports', reportRoutes);
+app.use('/analyze-shift-report', shiftAnalysisRoutes);
+app.use('/shift-reports', shiftReportRoutes);
 
 // Base route
 app.get('/', (req, res) => {

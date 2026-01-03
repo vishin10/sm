@@ -22,6 +22,8 @@ const alert_routes_1 = __importDefault(require("./routes/alert.routes"));
 const insight_routes_1 = __importDefault(require("./routes/insight.routes"));
 const chat_routes_1 = __importDefault(require("./routes/chat.routes"));
 const report_routes_1 = __importDefault(require("./routes/report.routes"));
+const shiftAnalysis_routes_1 = __importDefault(require("./routes/shiftAnalysis.routes"));
+const shiftReport_routes_1 = __importDefault(require("./routes/shiftReport.routes"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 3000;
@@ -31,8 +33,8 @@ app.use((0, cors_1.default)({
     origin: ((_a = process.env.CORS_ORIGIN) === null || _a === void 0 ? void 0 : _a.split(',')) || '*',
     credentials: true
 }));
-app.use(express_1.default.json());
-app.use(express_1.default.urlencoded({ extended: true }));
+app.use(express_1.default.json({ limit: '50mb' })); // Increased limit for image uploads
+app.use(express_1.default.urlencoded({ extended: true, limit: '50mb' }));
 // Rate limiting (Basic placeholder, will implement robust one in middleware)
 // app.use(rateLimiter); 
 // Routes
@@ -44,6 +46,8 @@ app.use('/alerts', alert_routes_1.default);
 app.use('/insights', insight_routes_1.default);
 app.use('/chat', chat_routes_1.default);
 app.use('/reports', report_routes_1.default);
+app.use('/analyze-shift-report', shiftAnalysis_routes_1.default);
+app.use('/shift-reports', shiftReport_routes_1.default);
 // Base route
 app.get('/', (req, res) => {
     res.json({ message: 'Silent Manager API is running' });
