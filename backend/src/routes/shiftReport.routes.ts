@@ -35,6 +35,10 @@ router.get('/analytics/top-departments', ShiftReportController.getTopDepartments
 router.get('/analytics/cash-variances', ShiftReportController.getCashVariances);
 router.get('/analytics/fuel-vs-inside', ShiftReportController.getFuelVsInside);
 
+// Chat and insights endpoints (must come before /:id)
+router.post('/:id/chat', ShiftReportController.chat);
+router.get('/:id/insights', ShiftReportController.getInsights);
+
 // Get single report
 router.get('/:id', ShiftReportController.getById);
 

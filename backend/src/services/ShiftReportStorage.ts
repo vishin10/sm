@@ -5,15 +5,27 @@ import { ShiftReportExtract, ShiftReportSummary } from '../types/shiftReportExtr
 
 const prisma = new PrismaClient();
 
+export interface SaveResult {
+    id: string;
+    status: 'created' | 'replaced_duplicate' | 'quality_upgrade';
+    uploadCount: number;
+}
+
+/**
+ * Enhanced ShiftReportStorage with universal AI extraction support
+ * Stores complete extraction data for natural language chat queries
+ */
 export class ShiftReportStorage {
 
     /**
-     * Save extracted shift report to database
+     * Save or update extracted shift report to database
+     * Stores both standard fields AND complete AI extraction
      */
     static async save(
         storeId: string,
-        extract: ShiftReportExtract
-    ): Promise<{ id: string; isDuplicate: boolean }> {
+        extract: ShiftReportExtract,
+        rawExtraction?: any // Complete AI extraction for chat queries
+    ): Promise<SaveResult> {
         // Generate receipt hash for deduplication
         const receiptHash = crypto
             .createHash('sha256')
@@ -25,11 +37,6 @@ export class ShiftReportStorage {
             where: { receiptHash }
         });
 
-        if (existing) {
-            Logger.info(`Duplicate shift report detected: ${existing.id}`);
-            return { id: existing.id, isDuplicate: true };
-        }
-
         // Determine report date
         let reportDate = new Date();
         if (extract.storeMetadata?.reportDate) {
@@ -38,76 +45,142 @@ export class ShiftReportStorage {
             } catch { }
         }
 
-        // Create the shift report
+        // Build the data object (shared between create and update)
+        const reportData = {
+            storeId,
+            receiptHash,
+            registerId: extract.storeMetadata?.registerId,
+            operatorId: extract.storeMetadata?.operatorId,
+            tillId: extract.storeMetadata?.tillId,
+            reportDate,
+            shiftStart: extract.storeMetadata?.shiftStart ? new Date(extract.storeMetadata.shiftStart) : null,
+            shiftEnd: extract.storeMetadata?.shiftEnd ? new Date(extract.storeMetadata.shiftEnd) : null,
+            printedAt: extract.storeMetadata?.reportPrintedAt ? new Date(extract.storeMetadata.reportPrintedAt) : null,
+
+            // Balances
+            beginningBalance: extract.balances?.beginningBalance,
+            endingBalance: extract.balances?.endingBalance,
+            closingAccountability: extract.balances?.closingAccountability,
+            cashierCounted: extract.balances?.cashierCounted,
+            cashVariance: extract.balances?.cashVariance,
+
+            // Sales
+            grossSales: extract.salesSummary?.grossSales,
+            netSales: extract.salesSummary?.netSales,
+            refunds: extract.salesSummary?.refunds,
+            discounts: extract.salesSummary?.discounts,
+            taxTotal: extract.salesSummary?.taxTotal,
+            totalTransactions: extract.salesSummary?.totalTransactions,
+
+            // Fuel
+            fuelSales: extract.fuel?.fuelSales,
+            fuelGross: extract.fuel?.fuelGross,
+            fuelGallons: extract.fuel?.fuelGallons,
+
+            // Inside
+            insideSales: extract.insideSales?.insideSales,
+            merchandiseSales: extract.insideSales?.merchandiseSales,
+            prepaysInitiated: extract.insideSales?.prepaysInitiated,
+            prepaysPumped: extract.insideSales?.prepaysPumped,
+
+            // Tenders
+            cashCount: extract.tenders?.cash?.count,
+            cashAmount: extract.tenders?.cash?.amount,
+            creditCount: extract.tenders?.credit?.count,
+            creditAmount: extract.tenders?.credit?.amount,
+            debitCount: extract.tenders?.debit?.count,
+            debitAmount: extract.tenders?.debit?.amount,
+            checkCount: extract.tenders?.check?.count,
+            checkAmount: extract.tenders?.check?.amount,
+            ebtCount: extract.tenders?.ebt?.count,
+            ebtAmount: extract.tenders?.ebt?.amount,
+            otherTenderCount: extract.tenders?.other?.count,
+            otherTenderAmount: extract.tenders?.other?.amount,
+            totalTenders: extract.tenders?.totalTenders,
+
+            // Safe activity
+            safeDropCount: extract.safeActivity?.safeDropCount,
+            safeDropAmount: extract.safeActivity?.safeDropAmount,
+            safeLoanCount: extract.safeActivity?.safeLoanCount,
+            safeLoanAmount: extract.safeActivity?.safeLoanAmount,
+            paidInCount: extract.safeActivity?.paidInCount,
+            paidInAmount: extract.safeActivity?.paidInAmount,
+            paidOutCount: extract.safeActivity?.paidOutCount,
+            paidOutAmount: extract.safeActivity?.paidOutAmount,
+
+            // Metadata
+            rawText: extract.rawText,
+            extractionMethod: extract.extractionMethod,
+            extractionConfidence: extract.extractionConfidence,
+            lastUploadedAt: new Date(),
+
+            // 🔥 NEW: Store complete AI extraction for natural language queries
+            fullExtraction: rawExtraction ? JSON.stringify(rawExtraction) : null,
+        };
+
+        if (existing) {
+            // UPSERT: Update existing record
+            const newUploadCount = (existing as any).uploadCount + 1 || 2;
+            const isQualityUpgrade = extract.extractionConfidence > (existing.extractionConfidence || 0);
+            const uploadReason = isQualityUpgrade ? 'quality-upgrade' : 'duplicate-replace';
+
+            Logger.info(`Duplicate detected, replacing: ${existing.id} (upload #${newUploadCount}, reason: ${uploadReason})`);
+
+            // Delete old child records first (they will be recreated)
+            await prisma.shiftReportDepartment.deleteMany({ where: { shiftReportId: existing.id } });
+            await prisma.shiftReportItem.deleteMany({ where: { shiftReportId: existing.id } });
+            await prisma.shiftReportException.deleteMany({ where: { shiftReportId: existing.id } });
+
+            // Update the main record
+            const report = await prisma.shiftReport.update({
+                where: { id: existing.id },
+                data: {
+                    ...reportData,
+                    uploadCount: newUploadCount,
+                    lastUploadReason: uploadReason,
+                    departments: {
+                        create: extract.departmentSales.map(d => ({
+                            departmentName: d.departmentName,
+                            quantity: d.quantity,
+                            amount: d.amount,
+                        }))
+                    },
+                    items: {
+                        create: extract.itemSales.map(i => ({
+                            itemName: i.itemName,
+                            sku: i.sku,
+                            quantity: i.quantity,
+                            amount: i.amount,
+                        }))
+                    },
+                    exceptions: {
+                        create: extract.exceptions.map(e => ({
+                            type: e.type,
+                            count: e.count,
+                            amount: e.amount,
+                        }))
+                    }
+                },
+                include: {
+                    departments: true,
+                    items: true,
+                    exceptions: true,
+                }
+            });
+
+            return {
+                id: report.id,
+                status: isQualityUpgrade ? 'quality_upgrade' : 'replaced_duplicate',
+                uploadCount: newUploadCount
+            };
+        }
+
+        // CREATE: New record
         const report = await prisma.shiftReport.create({
             data: {
-                storeId,
-                receiptHash,
-                registerId: extract.storeMetadata?.registerId,
-                operatorId: extract.storeMetadata?.operatorId,
-                tillId: extract.storeMetadata?.tillId,
-                reportDate,
-                shiftStart: extract.storeMetadata?.shiftStart ? new Date(extract.storeMetadata.shiftStart) : null,
-                shiftEnd: extract.storeMetadata?.shiftEnd ? new Date(extract.storeMetadata.shiftEnd) : null,
-                printedAt: extract.storeMetadata?.reportPrintedAt ? new Date(extract.storeMetadata.reportPrintedAt) : null,
-
-                // Balances
-                beginningBalance: extract.balances?.beginningBalance,
-                endingBalance: extract.balances?.endingBalance,
-                closingAccountability: extract.balances?.closingAccountability,
-                cashierCounted: extract.balances?.cashierCounted,
-                cashVariance: extract.balances?.cashVariance,
-
-                // Sales
-                grossSales: extract.salesSummary?.grossSales,
-                netSales: extract.salesSummary?.netSales,
-                refunds: extract.salesSummary?.refunds,
-                discounts: extract.salesSummary?.discounts,
-                taxTotal: extract.salesSummary?.taxTotal,
-                totalTransactions: extract.salesSummary?.totalTransactions,
-
-                // Fuel
-                fuelSales: extract.fuel?.fuelSales,
-                fuelGross: extract.fuel?.fuelGross,
-                fuelGallons: extract.fuel?.fuelGallons,
-
-                // Inside
-                insideSales: extract.insideSales?.insideSales,
-                merchandiseSales: extract.insideSales?.merchandiseSales,
-                prepaysInitiated: extract.insideSales?.prepaysInitiated,
-                prepaysPumped: extract.insideSales?.prepaysPumped,
-
-                // Tenders
-                cashCount: extract.tenders?.cash?.count,
-                cashAmount: extract.tenders?.cash?.amount,
-                creditCount: extract.tenders?.credit?.count,
-                creditAmount: extract.tenders?.credit?.amount,
-                debitCount: extract.tenders?.debit?.count,
-                debitAmount: extract.tenders?.debit?.amount,
-                checkCount: extract.tenders?.check?.count,
-                checkAmount: extract.tenders?.check?.amount,
-                ebtCount: extract.tenders?.ebt?.count,
-                ebtAmount: extract.tenders?.ebt?.amount,
-                otherTenderCount: extract.tenders?.other?.count,
-                otherTenderAmount: extract.tenders?.other?.amount,
-                totalTenders: extract.tenders?.totalTenders,
-
-                // Safe activity
-                safeDropCount: extract.safeActivity?.safeDropCount,
-                safeDropAmount: extract.safeActivity?.safeDropAmount,
-                safeLoanCount: extract.safeActivity?.safeLoanCount,
-                safeLoanAmount: extract.safeActivity?.safeLoanAmount,
-                paidInCount: extract.safeActivity?.paidInCount,
-                paidInAmount: extract.safeActivity?.paidInAmount,
-                paidOutCount: extract.safeActivity?.paidOutCount,
-                paidOutAmount: extract.safeActivity?.paidOutAmount,
-
-                // Metadata
-                rawText: extract.rawText,
-                extractionMethod: extract.extractionMethod,
-                extractionConfidence: extract.extractionConfidence,
-
-                // Child records
+                ...reportData,
+                uploadCount: 1,
+                lastUploadReason: 'initial',
                 departments: {
                     create: extract.departmentSales.map(d => ({
                         departmentName: d.departmentName,
@@ -138,8 +211,8 @@ export class ShiftReportStorage {
             }
         });
 
-        Logger.info(`Saved shift report: ${report.id}`);
-        return { id: report.id, isDuplicate: false };
+        Logger.info(`Created shift report: ${report.id}`);
+        return { id: report.id, status: 'created', uploadCount: 1 };
     }
 
     /**
@@ -155,6 +228,54 @@ export class ShiftReportStorage {
                 store: { select: { name: true } }
             }
         });
+    }
+
+    /**
+     * 🔥 NEW: Get full extraction data for chat queries
+     */
+    static async getFullExtraction(reportId: string): Promise<any> {
+        const report = await prisma.shiftReport.findUnique({
+            where: { id: reportId },
+            select: { fullExtraction: true }
+        });
+
+        if (!report?.fullExtraction) return null;
+
+        try {
+            return JSON.parse(report.fullExtraction as string);
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * 🔥 NEW: Get report with all data prepared for chat context
+     */
+    static async getForChat(reportId: string) {
+        const report = await prisma.shiftReport.findUnique({
+            where: { id: reportId },
+            include: {
+                departments: { orderBy: { amount: 'desc' } },
+                items: { orderBy: { amount: 'desc' } },
+                exceptions: true,
+                store: { select: { name: true } }
+            }
+        });
+
+        if (!report) return null;
+
+        // Parse full extraction if available
+        let fullExtraction = null;
+        if (report.fullExtraction) {
+            try {
+                fullExtraction = JSON.parse(report.fullExtraction as string);
+            } catch { }
+        }
+
+        return {
+            ...report,
+            fullExtraction
+        };
     }
 
     /**

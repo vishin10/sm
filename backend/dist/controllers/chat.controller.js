@@ -10,20 +10,39 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ChatController = void 0;
-const ChatService_1 = require("../services/ChatService");
+const GeneralChatService_1 = require("../services/GeneralChatService");
+const logger_1 = require("../utils/logger");
 class ChatController {
+    /**
+     * POST /chat
+     * General chat about shift reports - handles single or multiple reports
+     */
     static chat(req, res, next) {
         return __awaiter(this, void 0, void 0, function* () {
+            var _a;
             try {
-                const userId = req.user.id;
-                const { message } = req.body;
+                const userId = (_a = req.user) === null || _a === void 0 ? void 0 : _a.id;
+                const { message, storeId, conversationHistory } = req.body;
                 if (!message) {
-                    return res.status(400).json({ error: { code: 'INVALID_INPUT', message: 'Message is required' } });
+                    return res.status(400).json({
+                        error: { code: 'INVALID_INPUT', message: 'Message is required' }
+                    });
                 }
-                const reply = yield ChatService_1.ChatService.generateReply(userId, message);
-                res.json({ reply });
+                if (!storeId) {
+                    return res.status(400).json({
+                        error: { code: 'INVALID_INPUT', message: 'Store ID is required' }
+                    });
+                }
+                logger_1.Logger.info(`Chat request from user ${userId}: "${message}"`);
+                const response = yield GeneralChatService_1.GeneralChatService.askQuestion(storeId, message, conversationHistory);
+                res.json({
+                    reply: response.answer,
+                    suggestions: response.suggestions,
+                    reportsUsed: response.reportsUsed
+                });
             }
             catch (error) {
+                logger_1.Logger.error('Chat error', error);
                 next(error);
             }
         });

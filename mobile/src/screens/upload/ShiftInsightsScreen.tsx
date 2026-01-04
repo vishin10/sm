@@ -87,11 +87,12 @@ export default function ShiftInsightsScreen() {
     const { theme } = useThemeStore();
     const themeColors = getThemeColors(theme);
 
-    const { extract, method, ocrScore, isDuplicate, savedAt, reportId } = route.params as {
+    const { extract, method, ocrScore, status, uploadCount, savedAt, reportId } = route.params as {
         extract: ShiftReportExtract;
         method?: 'ocr' | 'openai_text' | 'openai_vision';
         ocrScore?: number;
-        isDuplicate?: boolean;
+        status?: 'created' | 'replaced_duplicate' | 'quality_upgrade';
+        uploadCount?: number;
         savedAt?: string;
         reportId?: string;
     };
@@ -148,8 +149,14 @@ export default function ShiftInsightsScreen() {
                     {ocrScore !== undefined && (
                         <Text style={styles.scoreLabel}>Score: {ocrScore}</Text>
                     )}
-                    {isDuplicate && (
-                        <Text style={styles.duplicateLabel}>⚠️ Duplicate</Text>
+                    {status === 'replaced_duplicate' && (
+                        <Text style={styles.duplicateLabel}>🔄 Updated</Text>
+                    )}
+                    {status === 'quality_upgrade' && (
+                        <Text style={styles.upgradeLabel}>⬆️ Quality Upgrade</Text>
+                    )}
+                    {uploadCount && uploadCount > 1 && (
+                        <Text style={styles.countLabel}>#{uploadCount}</Text>
                     )}
                 </View>
 
@@ -413,6 +420,18 @@ const createStyles = (themeColors: ReturnType<typeof getThemeColors>) => StyleSh
     duplicateLabel: {
         fontSize: 13,
         color: colors.semantic.warning,
+    },
+    upgradeLabel: {
+        fontSize: 13,
+        color: colors.semantic.success,
+    },
+    countLabel: {
+        fontSize: 12,
+        color: themeColors.textSecondary,
+        backgroundColor: themeColors.card,
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
     },
     section: {
         marginBottom: 16,

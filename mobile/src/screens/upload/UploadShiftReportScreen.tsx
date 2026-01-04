@@ -172,7 +172,8 @@ export default function UploadShiftReportScreen() {
                     extract: response.data.extract,
                     method: response.data.method,
                     ocrScore: response.data.ocrScore,
-                    isDuplicate: response.data.isDuplicate,
+                    status: response.data.status,
+                    uploadCount: response.data.uploadCount,
                     savedAt: response.data.savedAt,
                 });
             }

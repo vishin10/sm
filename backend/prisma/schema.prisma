@@ -10,7 +10,7 @@ datasource db {
 model User {
   id        String   @id @default(cuid())
   email     String   @unique
-  password  String   // bcrypt hashed
+  password  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   stores    Store[]
@@ -22,7 +22,7 @@ model Store {
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   name         String
   timezone     String        @default("America/New_York")
-  deviceKey    String        @unique // for XML uploads
+  deviceKey    String        @unique
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   shifts       Shift[]
@@ -101,10 +101,6 @@ model Insight {
   @@index([storeId])
 }
 
-// ============================================
-// SHIFT REPORT EXTRACTION MODELS
-// ============================================
-
 model ShiftReport {
   id                    String   @id @default(cuid())
   storeId               String
@@ -169,8 +165,14 @@ model ShiftReport {
   rawText               String    @db.Text
   extractionMethod      String
   extractionConfidence  Float     @default(0)
+  fullExtraction        String?   @db.Text
+  
+  uploadCount           Int       @default(1)
+  lastUploadedAt        DateTime  @default(now())
+  lastUploadReason      String?
   
   createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
   
   departments           ShiftReportDepartment[]
   items                 ShiftReportItem[]

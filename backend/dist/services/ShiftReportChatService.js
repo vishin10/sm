@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ChatService = void 0;
+exports.ShiftReportChatService = void 0;
 const openai_1 = __importDefault(require("openai"));
 const logger_1 = require("../utils/logger");
 const ShiftReportStorage_1 = require("./ShiftReportStorage");
@@ -20,7 +20,7 @@ const ShiftReportStorage_1 = require("./ShiftReportStorage");
  * Natural language chat service for shift report analytics
  * Works like ChatGPT - conversational, helpful, with suggestions
  */
-class ChatService {
+class ShiftReportChatService {
     /**
      * Answer a natural language question about a shift report
      */
@@ -225,14 +225,14 @@ class ChatService {
         });
     }
 }
-exports.ChatService = ChatService;
-ChatService.openai = new openai_1.default({
+exports.ShiftReportChatService = ShiftReportChatService;
+ShiftReportChatService.openai = new openai_1.default({
     apiKey: process.env.OPENAI_API_KEY,
 });
 /**
  * System prompt for natural conversational analytics
  */
-ChatService.CHAT_SYSTEM_PROMPT = `You are an AI assistant helping a gas station/convenience store manager analyze their shift reports.
+ShiftReportChatService.CHAT_SYSTEM_PROMPT = `You are an AI assistant helping a gas station/convenience store manager analyze their shift reports.
 
 Your personality:
 - Conversational and friendly (like ChatGPT)

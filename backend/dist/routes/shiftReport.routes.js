@@ -34,6 +34,9 @@ router.get('/analytics/top-items', shiftReport_controller_1.ShiftReportControlle
 router.get('/analytics/top-departments', shiftReport_controller_1.ShiftReportController.getTopDepartments);
 router.get('/analytics/cash-variances', shiftReport_controller_1.ShiftReportController.getCashVariances);
 router.get('/analytics/fuel-vs-inside', shiftReport_controller_1.ShiftReportController.getFuelVsInside);
+// Chat and insights endpoints (must come before /:id)
+router.post('/:id/chat', shiftReport_controller_1.ShiftReportController.chat);
+router.get('/:id/insights', shiftReport_controller_1.ShiftReportController.getInsights);
 // Get single report
 router.get('/:id', shiftReport_controller_1.ShiftReportController.getById);
 // Get summary for AI chat

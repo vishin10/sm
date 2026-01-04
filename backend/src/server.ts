@@ -13,10 +13,10 @@ import shiftRoutes from './routes/shift.routes';
 import uploadRoutes from './routes/upload.routes';
 import alertRoutes from './routes/alert.routes';
 import insightRoutes from './routes/insight.routes';
-import chatRoutes from './routes/chat.routes';
 import reportRoutes from './routes/report.routes';
 import shiftAnalysisRoutes from './routes/shiftAnalysis.routes';
 import shiftReportRoutes from './routes/shiftReport.routes';
+import chatRoutes from './routes/chat.routes';
 
 dotenv.config();
 
@@ -42,10 +42,10 @@ app.use('/shifts', shiftRoutes);
 app.use('/uploads', uploadRoutes);
 app.use('/alerts', alertRoutes);
 app.use('/insights', insightRoutes);
-app.use('/chat', chatRoutes);
 app.use('/reports', reportRoutes);
 app.use('/analyze-shift-report', shiftAnalysisRoutes);
 app.use('/shift-reports', shiftReportRoutes);
+app.use('/chat', chatRoutes);
 
 // Base route
 app.get('/', (req, res) => {

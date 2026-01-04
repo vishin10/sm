@@ -12,11 +12,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ShiftReportController = void 0;
 const ShiftAnalysisService_1 = require("../services/ShiftAnalysisService");
 const ShiftReportStorage_1 = require("../services/ShiftReportStorage");
+const ShiftReportChatService_1 = require("../services/ShiftReportChatService");
 const logger_1 = require("../utils/logger");
 class ShiftReportController {
     /**
      * POST /shift-reports/upload
-     * Upload, extract, and save a shift report
+     * Upload, extract, and save a shift report with universal AI extraction
      */
     static uploadAndAnalyze(req, res, next) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -34,20 +35,22 @@ class ShiftReportController {
                     });
                 }
                 logger_1.Logger.info(`Analyzing shift report for store ${storeId}: ${file.originalname}`);
-                // Analyze the report
+                // Analyze with universal AI extraction
                 const result = yield ShiftAnalysisService_1.ShiftAnalysisService.analyzeShiftReport(file.buffer, file.mimetype);
-                // Save to database
-                const saveResult = yield ShiftReportStorage_1.ShiftReportStorage.save(storeId, result.extract);
+                // Save to database with FULL extraction data for chat queries
+                const saveResult = yield ShiftReportStorage_1.ShiftReportStorage.save(storeId, result.extract, result.rawExtraction);
                 // Fetch the full saved record
                 const report = yield ShiftReportStorage_1.ShiftReportStorage.getById(saveResult.id);
                 res.json({
                     success: true,
                     reportId: saveResult.id,
-                    isDuplicate: saveResult.isDuplicate,
+                    status: saveResult.status,
+                    uploadCount: saveResult.uploadCount,
                     extract: result.extract,
                     method: result.method,
                     ocrScore: result.ocrScore,
                     savedAt: report === null || report === void 0 ? void 0 : report.createdAt,
+                    updatedAt: report === null || report === void 0 ? void 0 : report.updatedAt,
                 });
             }
             catch (error) {
@@ -62,6 +65,59 @@ class ShiftReportController {
                         error: { code: 'PARSE_ERROR', message: 'Could not extract data from report.' }
                     });
                 }
+                next(error);
+            }
+        });
+    }
+    /**
+     * POST /shift-reports/:id/chat
+     * Ask natural language questions about a shift report
+     */
+    static chat(req, res, next) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { id } = req.params;
+                const { question, conversationHistory } = req.body;
+                if (!question) {
+                    return res.status(400).json({
+                        error: { code: 'MISSING_QUESTION', message: 'Question is required' }
+                    });
+                }
+                logger_1.Logger.info(`Chat query for report ${id}: "${question}"`);
+                const response = yield ShiftReportChatService_1.ShiftReportChatService.askQuestion(id, question, conversationHistory);
+                res.json({
+                    success: true,
+                    answer: response.answer,
+                    suggestions: response.suggestions,
+                    relatedData: response.relatedData
+                });
+            }
+            catch (error) {
+                if (error.message === 'Report not found') {
+                    return res.status(404).json({
+                        error: { code: 'NOT_FOUND', message: 'Shift report not found' }
+                    });
+                }
+                next(error);
+            }
+        });
+    }
+    /**
+     * GET /shift-reports/:id/insights
+     * Get automatic AI-generated insights for a report
+     */
+    static getInsights(req, res, next) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { id } = req.params;
+                logger_1.Logger.info(`Generating insights for report ${id}`);
+                const insights = yield ShiftReportChatService_1.ShiftReportChatService.generateInsights(id);
+                res.json({
+                    success: true,
+                    insights
+                });
+            }
+            catch (error) {
                 next(error);
             }
         });

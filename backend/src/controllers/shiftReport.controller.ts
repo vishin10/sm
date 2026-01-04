@@ -1,12 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import { ShiftAnalysisService } from '../services/ShiftAnalysisService';
 import { ShiftReportStorage } from '../services/ShiftReportStorage';
+import { ShiftReportChatService } from '../services/ShiftReportChatService';
 import { Logger } from '../utils/logger';
 
 export class ShiftReportController {
     /**
      * POST /shift-reports/upload
-     * Upload, extract, and save a shift report
+     * Upload, extract, and save a shift report with universal AI extraction
      */
     static async uploadAndAnalyze(req: Request, res: Response, next: NextFunction) {
         try {
@@ -27,14 +28,18 @@ export class ShiftReportController {
 
             Logger.info(`Analyzing shift report for store ${storeId}: ${file.originalname}`);
 
-            // Analyze the report
+            // Analyze with universal AI extraction
             const result = await ShiftAnalysisService.analyzeShiftReport(
                 file.buffer,
                 file.mimetype
             );
 
-            // Save to database
-            const saveResult = await ShiftReportStorage.save(storeId, result.extract);
+            // Save to database with FULL extraction data for chat queries
+            const saveResult = await ShiftReportStorage.save(
+                storeId,
+                result.extract,
+                result.rawExtraction
+            );
 
             // Fetch the full saved record
             const report = await ShiftReportStorage.getById(saveResult.id);
@@ -42,11 +47,13 @@ export class ShiftReportController {
             res.json({
                 success: true,
                 reportId: saveResult.id,
-                isDuplicate: saveResult.isDuplicate,
+                status: saveResult.status,
+                uploadCount: saveResult.uploadCount,
                 extract: result.extract,
                 method: result.method,
                 ocrScore: result.ocrScore,
                 savedAt: report?.createdAt,
+                updatedAt: report?.updatedAt,
             });
 
         } catch (error: any) {
@@ -64,6 +71,68 @@ export class ShiftReportController {
                 });
             }
 
+            next(error);
+        }
+    }
+
+    /**
+     * POST /shift-reports/:id/chat
+     * Ask natural language questions about a shift report
+     */
+    static async chat(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { id } = req.params;
+            const { question, conversationHistory } = req.body;
+
+            if (!question) {
+                return res.status(400).json({
+                    error: { code: 'MISSING_QUESTION', message: 'Question is required' }
+                });
+            }
+
+            Logger.info(`Chat query for report ${id}: "${question}"`);
+
+            const response = await ShiftReportChatService.askQuestion(
+                id,
+                question,
+                conversationHistory
+            );
+
+            res.json({
+                success: true,
+                answer: response.answer,
+                suggestions: response.suggestions,
+                relatedData: response.relatedData
+            });
+
+        } catch (error: any) {
+            if (error.message === 'Report not found') {
+                return res.status(404).json({
+                    error: { code: 'NOT_FOUND', message: 'Shift report not found' }
+                });
+            }
+            next(error);
+        }
+    }
+
+    /**
+     * GET /shift-reports/:id/insights
+     * Get automatic AI-generated insights for a report
+     */
+    static async getInsights(req: Request, res: Response, next: NextFunction) {
+        try {
+            const { id } = req.params;
+
+            Logger.info(`Generating insights for report ${id}`);
+
+            const insights = await ShiftReportChatService.generateInsights(id);
+
+            res.json({
+                success: true,
+                insights
+            });
+
+        } catch (error) {
             next(error);
         }
     }
