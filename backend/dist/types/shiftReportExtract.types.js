@@ -1,9 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ShiftReportExtractSchema = exports.SafeActivitySchema = exports.TendersSchema = exports.TenderSchema = exports.InsideSalesSchema = exports.FuelSchema = exports.SalesSummarySchema = exports.BalancesSchema = exports.StoreMetadataSchema = exports.ExceptionSchema = exports.ItemSaleSchema = exports.DepartmentSaleSchema = void 0;
+exports.ShiftReportExtractSchema = exports.SafeActivitySchema = exports.SafeDropsBreakdownSchema = exports.TendersSchema = exports.TenderSchema = exports.InsideSalesSchema = exports.FuelSchema = exports.SalesSummarySchema = exports.BalancesSchema = exports.StoreMetadataSchema = exports.ExceptionSchema = exports.ItemSaleSchema = exports.DepartmentSaleSchema = void 0;
 const zod_1 = require("zod");
 // Confidence level for each field
 const ConfidenceLevel = zod_1.z.number().min(0).max(1).optional();
+// -------------------- SALES / ITEMS --------------------
 // Department sale item
 exports.DepartmentSaleSchema = zod_1.z.object({
     departmentName: zod_1.z.string(),
@@ -25,6 +26,7 @@ exports.ExceptionSchema = zod_1.z.object({
     count: zod_1.z.number().int().default(0),
     amount: zod_1.z.number().optional(),
 });
+// -------------------- METADATA --------------------
 // Store metadata section
 exports.StoreMetadataSchema = zod_1.z.object({
     storeName: zod_1.z.string().optional(),
@@ -32,11 +34,14 @@ exports.StoreMetadataSchema = zod_1.z.object({
     registerId: zod_1.z.string().optional(),
     operatorId: zod_1.z.string().optional(),
     tillId: zod_1.z.string().optional(),
-    reportPrintedAt: zod_1.z.string().optional(), // ISO date string
+    // ISO date string
+    reportPrintedAt: zod_1.z.string().optional(),
     shiftStart: zod_1.z.string().optional(),
     shiftEnd: zod_1.z.string().optional(),
+    // NOTE: This may be calendar date; business date can be derived from shiftEnd
     reportDate: zod_1.z.string().optional(),
 });
+// -------------------- BALANCES --------------------
 // Balances section
 exports.BalancesSchema = zod_1.z.object({
     beginningBalance: zod_1.z.number().optional(),
@@ -46,6 +51,7 @@ exports.BalancesSchema = zod_1.z.object({
     cashVariance: zod_1.z.number().optional(), // positive = over, negative = short
     confidence: ConfidenceLevel,
 });
+// -------------------- SALES SUMMARY --------------------
 // Sales summary section
 exports.SalesSummarySchema = zod_1.z.object({
     grossSales: zod_1.z.number().optional(),
@@ -53,9 +59,12 @@ exports.SalesSummarySchema = zod_1.z.object({
     refunds: zod_1.z.number().optional(),
     discounts: zod_1.z.number().optional(),
     taxTotal: zod_1.z.number().optional(),
+    // Many receipts call this "Transactions" or "Customers"
     totalTransactions: zod_1.z.number().int().optional(),
+    customersCount: zod_1.z.number().int().optional(), // NEW
     confidence: ConfidenceLevel,
 });
+// -------------------- FUEL --------------------
 // Fuel section
 exports.FuelSchema = zod_1.z.object({
     fuelSales: zod_1.z.number().optional(),
@@ -63,6 +72,7 @@ exports.FuelSchema = zod_1.z.object({
     fuelGallons: zod_1.z.number().optional(),
     confidence: ConfidenceLevel,
 });
+// -------------------- INSIDE / MERCH --------------------
 // Inside/Merchandise section
 exports.InsideSalesSchema = zod_1.z.object({
     insideSales: zod_1.z.number().optional(),
@@ -71,6 +81,7 @@ exports.InsideSalesSchema = zod_1.z.object({
     prepaysPumped: zod_1.z.number().optional(),
     confidence: ConfidenceLevel,
 });
+// -------------------- TENDERS --------------------
 // Tender (single type)
 exports.TenderSchema = zod_1.z.object({
     type: zod_1.z.string(),
@@ -88,6 +99,28 @@ exports.TendersSchema = zod_1.z.object({
     totalTenders: zod_1.z.number().optional(),
     confidence: ConfidenceLevel,
 });
+// -------------------- SAFE / TILL ACTIVITY --------------------
+/**
+ * Some POS systems break safe drops into:
+ * - CASHIER SAFE DROPS (usually just cash)
+ * - SYSTEM SAFE DROPS (cash/credit/debit breakdown)
+ */
+exports.SafeDropsBreakdownSchema = zod_1.z.object({
+    cashier: zod_1.z
+        .object({
+        cashAmount: zod_1.z.number().optional(),
+        totalAmount: zod_1.z.number().optional(),
+    })
+        .optional(),
+    system: zod_1.z
+        .object({
+        cashAmount: zod_1.z.number().optional(),
+        creditAmount: zod_1.z.number().optional(),
+        debitAmount: zod_1.z.number().optional(),
+        totalAmount: zod_1.z.number().optional(),
+    })
+        .optional(),
+});
 // Safe activity section
 exports.SafeActivitySchema = zod_1.z.object({
     safeDropCount: zod_1.z.number().int().optional(),
@@ -98,8 +131,14 @@ exports.SafeActivitySchema = zod_1.z.object({
     paidInAmount: zod_1.z.number().optional(),
     paidOutCount: zod_1.z.number().int().optional(),
     paidOutAmount: zod_1.z.number().optional(),
+    // NEW: safe drop breakdown
+    safeDropsBreakdown: exports.SafeDropsBreakdownSchema.optional(),
+    // NEW: till payments in/out (shown on many receipts)
+    paymentsIntoTillAmount: zod_1.z.number().optional(),
+    paymentsOutOfTillAmount: zod_1.z.number().optional(),
     confidence: ConfidenceLevel,
 });
+// -------------------- FULL EXTRACTION --------------------
 // Full extraction result
 exports.ShiftReportExtractSchema = zod_1.z.object({
     // Raw OCR text

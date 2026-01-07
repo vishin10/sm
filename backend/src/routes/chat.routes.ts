@@ -4,10 +4,21 @@ import { authenticate } from '../middleware/auth.middleware';
 
 const router = Router();
 
-// All routes require authentication
-router.use(authenticate);
+// Chat endpoint (requires auth)
+router.post('/', authenticate, ChatController.chat);
 
-// General chat endpoint
-router.post('/', ChatController.chat);
+// Conversation management (requires auth)
+router.get('/conversations', authenticate, ChatController.listConversations);
+router.get('/conversations/:id', authenticate, ChatController.getConversation);
+router.delete('/conversations/:id', authenticate, ChatController.deleteConversation);
+router.patch('/conversations/:id/pin', authenticate, ChatController.togglePin);
+router.patch('/conversations/:id/rename', authenticate, ChatController.renameConversation);
+
+// Share management (requires auth)
+router.post('/conversations/:id/share', authenticate, ChatController.shareConversation);
+router.post('/conversations/:id/unshare', authenticate, ChatController.unshareConversation);
+
+// Public shared conversation (NO auth required)
+router.get('/shared/:token', ChatController.getSharedConversation);
 
 export default router;

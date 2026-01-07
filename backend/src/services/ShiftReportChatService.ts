@@ -115,23 +115,26 @@ Always respond with valid JSON matching this format.`;
             {
                 role: "system",
                 content: this.CHAT_SYSTEM_PROMPT
-            },
-            {
-                role: "user",
-                content: `Here's the shift report data:\n\n${JSON.stringify(dataContext, null, 2)}`
-            },
+            }
         ];
 
-        // Add conversation history if provided
+        // 1️⃣ Add conversation history FIRST (this enables real chat behavior)
         if (conversationHistory && conversationHistory.length > 0) {
             messages.push(...conversationHistory);
         }
 
-        // Add current question
+        // 2️⃣ Then give the shift report data (grounding)
+        messages.push({
+            role: "user",
+            content: `Here's the shift report data:\n\n${JSON.stringify(dataContext, null, 2)}`
+        });
+
+        // 3️⃣ Then add the current question
         messages.push({
             role: "user",
             content: question
         });
+
 
         Logger.info(`Chat query: "${question}" for report ${reportId}`);
 

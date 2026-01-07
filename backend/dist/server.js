@@ -24,6 +24,7 @@ const report_routes_1 = __importDefault(require("./routes/report.routes"));
 const shiftAnalysis_routes_1 = __importDefault(require("./routes/shiftAnalysis.routes"));
 const shiftReport_routes_1 = __importDefault(require("./routes/shiftReport.routes"));
 const chat_routes_1 = __importDefault(require("./routes/chat.routes"));
+const conversationCleanup_1 = require("./jobs/conversationCleanup");
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 3000;
@@ -56,4 +57,6 @@ app.get('/', (req, res) => {
 app.use(errorHandler_1.errorHandler);
 exports.server = app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    // Start background jobs
+    (0, conversationCleanup_1.startConversationCleanupJob)();
 });

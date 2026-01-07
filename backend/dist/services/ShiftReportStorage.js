@@ -29,7 +29,7 @@ class ShiftReportStorage {
     static save(storeId, extract, rawExtraction // Complete AI extraction for chat queries
     ) {
         return __awaiter(this, void 0, void 0, function* () {
-            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, _27, _28, _29, _30, _31, _32, _33;
+            var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, _22, _23, _24, _25, _26, _27, _28, _29, _30, _31, _32, _33, _34, _35;
             // Generate receipt hash for deduplication
             const receiptHash = crypto_1.default
                 .createHash('sha256')
@@ -40,69 +40,81 @@ class ShiftReportStorage {
                 where: { receiptHash }
             });
             // Determine report date
+            // Determine BUSINESS report date (important for night shifts)
             let reportDate = new Date();
-            if ((_a = extract.storeMetadata) === null || _a === void 0 ? void 0 : _a.reportDate) {
-                try {
+            try {
+                if ((_a = extract.storeMetadata) === null || _a === void 0 ? void 0 : _a.shiftEnd) {
+                    // Night shifts belong to the day they END
+                    reportDate = new Date(extract.storeMetadata.shiftEnd);
+                }
+                else if ((_b = extract.storeMetadata) === null || _b === void 0 ? void 0 : _b.reportPrintedAt) {
+                    reportDate = new Date(extract.storeMetadata.reportPrintedAt);
+                }
+                else if ((_c = extract.storeMetadata) === null || _c === void 0 ? void 0 : _c.reportDate) {
                     reportDate = new Date(extract.storeMetadata.reportDate);
                 }
-                catch (_34) { }
             }
+            catch (_36) {
+                reportDate = new Date();
+            }
+            // Normalize to date-only (avoid timezone edge cases)
+            reportDate = new Date(reportDate.getFullYear(), reportDate.getMonth(), reportDate.getDate());
             // Build the data object (shared between create and update)
             const reportData = {
                 storeId,
                 receiptHash,
-                registerId: (_b = extract.storeMetadata) === null || _b === void 0 ? void 0 : _b.registerId,
-                operatorId: (_c = extract.storeMetadata) === null || _c === void 0 ? void 0 : _c.operatorId,
-                tillId: (_d = extract.storeMetadata) === null || _d === void 0 ? void 0 : _d.tillId,
+                registerId: (_d = extract.storeMetadata) === null || _d === void 0 ? void 0 : _d.registerId,
+                operatorId: (_e = extract.storeMetadata) === null || _e === void 0 ? void 0 : _e.operatorId,
+                tillId: (_f = extract.storeMetadata) === null || _f === void 0 ? void 0 : _f.tillId,
                 reportDate,
-                shiftStart: ((_e = extract.storeMetadata) === null || _e === void 0 ? void 0 : _e.shiftStart) ? new Date(extract.storeMetadata.shiftStart) : null,
-                shiftEnd: ((_f = extract.storeMetadata) === null || _f === void 0 ? void 0 : _f.shiftEnd) ? new Date(extract.storeMetadata.shiftEnd) : null,
-                printedAt: ((_g = extract.storeMetadata) === null || _g === void 0 ? void 0 : _g.reportPrintedAt) ? new Date(extract.storeMetadata.reportPrintedAt) : null,
+                shiftStart: ((_g = extract.storeMetadata) === null || _g === void 0 ? void 0 : _g.shiftStart) ? new Date(extract.storeMetadata.shiftStart) : null,
+                shiftEnd: ((_h = extract.storeMetadata) === null || _h === void 0 ? void 0 : _h.shiftEnd) ? new Date(extract.storeMetadata.shiftEnd) : null,
+                printedAt: ((_j = extract.storeMetadata) === null || _j === void 0 ? void 0 : _j.reportPrintedAt) ? new Date(extract.storeMetadata.reportPrintedAt) : null,
                 // Balances
-                beginningBalance: (_h = extract.balances) === null || _h === void 0 ? void 0 : _h.beginningBalance,
-                endingBalance: (_j = extract.balances) === null || _j === void 0 ? void 0 : _j.endingBalance,
-                closingAccountability: (_k = extract.balances) === null || _k === void 0 ? void 0 : _k.closingAccountability,
-                cashierCounted: (_l = extract.balances) === null || _l === void 0 ? void 0 : _l.cashierCounted,
-                cashVariance: (_m = extract.balances) === null || _m === void 0 ? void 0 : _m.cashVariance,
+                beginningBalance: (_k = extract.balances) === null || _k === void 0 ? void 0 : _k.beginningBalance,
+                endingBalance: (_l = extract.balances) === null || _l === void 0 ? void 0 : _l.endingBalance,
+                closingAccountability: (_m = extract.balances) === null || _m === void 0 ? void 0 : _m.closingAccountability,
+                cashierCounted: (_o = extract.balances) === null || _o === void 0 ? void 0 : _o.cashierCounted,
+                cashVariance: (_p = extract.balances) === null || _p === void 0 ? void 0 : _p.cashVariance,
                 // Sales
-                grossSales: (_o = extract.salesSummary) === null || _o === void 0 ? void 0 : _o.grossSales,
-                netSales: (_p = extract.salesSummary) === null || _p === void 0 ? void 0 : _p.netSales,
-                refunds: (_q = extract.salesSummary) === null || _q === void 0 ? void 0 : _q.refunds,
-                discounts: (_r = extract.salesSummary) === null || _r === void 0 ? void 0 : _r.discounts,
-                taxTotal: (_s = extract.salesSummary) === null || _s === void 0 ? void 0 : _s.taxTotal,
-                totalTransactions: (_t = extract.salesSummary) === null || _t === void 0 ? void 0 : _t.totalTransactions,
+                grossSales: (_q = extract.salesSummary) === null || _q === void 0 ? void 0 : _q.grossSales,
+                netSales: (_r = extract.salesSummary) === null || _r === void 0 ? void 0 : _r.netSales,
+                refunds: (_s = extract.salesSummary) === null || _s === void 0 ? void 0 : _s.refunds,
+                discounts: (_t = extract.salesSummary) === null || _t === void 0 ? void 0 : _t.discounts,
+                taxTotal: (_u = extract.salesSummary) === null || _u === void 0 ? void 0 : _u.taxTotal,
+                totalTransactions: (_v = extract.salesSummary) === null || _v === void 0 ? void 0 : _v.totalTransactions,
                 // Fuel
-                fuelSales: (_u = extract.fuel) === null || _u === void 0 ? void 0 : _u.fuelSales,
-                fuelGross: (_v = extract.fuel) === null || _v === void 0 ? void 0 : _v.fuelGross,
-                fuelGallons: (_w = extract.fuel) === null || _w === void 0 ? void 0 : _w.fuelGallons,
+                fuelSales: (_w = extract.fuel) === null || _w === void 0 ? void 0 : _w.fuelSales,
+                fuelGross: (_x = extract.fuel) === null || _x === void 0 ? void 0 : _x.fuelGross,
+                fuelGallons: (_y = extract.fuel) === null || _y === void 0 ? void 0 : _y.fuelGallons,
                 // Inside
-                insideSales: (_x = extract.insideSales) === null || _x === void 0 ? void 0 : _x.insideSales,
-                merchandiseSales: (_y = extract.insideSales) === null || _y === void 0 ? void 0 : _y.merchandiseSales,
-                prepaysInitiated: (_z = extract.insideSales) === null || _z === void 0 ? void 0 : _z.prepaysInitiated,
-                prepaysPumped: (_0 = extract.insideSales) === null || _0 === void 0 ? void 0 : _0.prepaysPumped,
+                insideSales: (_z = extract.insideSales) === null || _z === void 0 ? void 0 : _z.insideSales,
+                merchandiseSales: (_0 = extract.insideSales) === null || _0 === void 0 ? void 0 : _0.merchandiseSales,
+                prepaysInitiated: (_1 = extract.insideSales) === null || _1 === void 0 ? void 0 : _1.prepaysInitiated,
+                prepaysPumped: (_2 = extract.insideSales) === null || _2 === void 0 ? void 0 : _2.prepaysPumped,
                 // Tenders
-                cashCount: (_2 = (_1 = extract.tenders) === null || _1 === void 0 ? void 0 : _1.cash) === null || _2 === void 0 ? void 0 : _2.count,
-                cashAmount: (_4 = (_3 = extract.tenders) === null || _3 === void 0 ? void 0 : _3.cash) === null || _4 === void 0 ? void 0 : _4.amount,
-                creditCount: (_6 = (_5 = extract.tenders) === null || _5 === void 0 ? void 0 : _5.credit) === null || _6 === void 0 ? void 0 : _6.count,
-                creditAmount: (_8 = (_7 = extract.tenders) === null || _7 === void 0 ? void 0 : _7.credit) === null || _8 === void 0 ? void 0 : _8.amount,
-                debitCount: (_10 = (_9 = extract.tenders) === null || _9 === void 0 ? void 0 : _9.debit) === null || _10 === void 0 ? void 0 : _10.count,
-                debitAmount: (_12 = (_11 = extract.tenders) === null || _11 === void 0 ? void 0 : _11.debit) === null || _12 === void 0 ? void 0 : _12.amount,
-                checkCount: (_14 = (_13 = extract.tenders) === null || _13 === void 0 ? void 0 : _13.check) === null || _14 === void 0 ? void 0 : _14.count,
-                checkAmount: (_16 = (_15 = extract.tenders) === null || _15 === void 0 ? void 0 : _15.check) === null || _16 === void 0 ? void 0 : _16.amount,
-                ebtCount: (_18 = (_17 = extract.tenders) === null || _17 === void 0 ? void 0 : _17.ebt) === null || _18 === void 0 ? void 0 : _18.count,
-                ebtAmount: (_20 = (_19 = extract.tenders) === null || _19 === void 0 ? void 0 : _19.ebt) === null || _20 === void 0 ? void 0 : _20.amount,
-                otherTenderCount: (_22 = (_21 = extract.tenders) === null || _21 === void 0 ? void 0 : _21.other) === null || _22 === void 0 ? void 0 : _22.count,
-                otherTenderAmount: (_24 = (_23 = extract.tenders) === null || _23 === void 0 ? void 0 : _23.other) === null || _24 === void 0 ? void 0 : _24.amount,
-                totalTenders: (_25 = extract.tenders) === null || _25 === void 0 ? void 0 : _25.totalTenders,
+                cashCount: (_4 = (_3 = extract.tenders) === null || _3 === void 0 ? void 0 : _3.cash) === null || _4 === void 0 ? void 0 : _4.count,
+                cashAmount: (_6 = (_5 = extract.tenders) === null || _5 === void 0 ? void 0 : _5.cash) === null || _6 === void 0 ? void 0 : _6.amount,
+                creditCount: (_8 = (_7 = extract.tenders) === null || _7 === void 0 ? void 0 : _7.credit) === null || _8 === void 0 ? void 0 : _8.count,
+                creditAmount: (_10 = (_9 = extract.tenders) === null || _9 === void 0 ? void 0 : _9.credit) === null || _10 === void 0 ? void 0 : _10.amount,
+                debitCount: (_12 = (_11 = extract.tenders) === null || _11 === void 0 ? void 0 : _11.debit) === null || _12 === void 0 ? void 0 : _12.count,
+                debitAmount: (_14 = (_13 = extract.tenders) === null || _13 === void 0 ? void 0 : _13.debit) === null || _14 === void 0 ? void 0 : _14.amount,
+                checkCount: (_16 = (_15 = extract.tenders) === null || _15 === void 0 ? void 0 : _15.check) === null || _16 === void 0 ? void 0 : _16.count,
+                checkAmount: (_18 = (_17 = extract.tenders) === null || _17 === void 0 ? void 0 : _17.check) === null || _18 === void 0 ? void 0 : _18.amount,
+                ebtCount: (_20 = (_19 = extract.tenders) === null || _19 === void 0 ? void 0 : _19.ebt) === null || _20 === void 0 ? void 0 : _20.count,
+                ebtAmount: (_22 = (_21 = extract.tenders) === null || _21 === void 0 ? void 0 : _21.ebt) === null || _22 === void 0 ? void 0 : _22.amount,
+                otherTenderCount: (_24 = (_23 = extract.tenders) === null || _23 === void 0 ? void 0 : _23.other) === null || _24 === void 0 ? void 0 : _24.count,
+                otherTenderAmount: (_26 = (_25 = extract.tenders) === null || _25 === void 0 ? void 0 : _25.other) === null || _26 === void 0 ? void 0 : _26.amount,
+                totalTenders: (_27 = extract.tenders) === null || _27 === void 0 ? void 0 : _27.totalTenders,
                 // Safe activity
-                safeDropCount: (_26 = extract.safeActivity) === null || _26 === void 0 ? void 0 : _26.safeDropCount,
-                safeDropAmount: (_27 = extract.safeActivity) === null || _27 === void 0 ? void 0 : _27.safeDropAmount,
-                safeLoanCount: (_28 = extract.safeActivity) === null || _28 === void 0 ? void 0 : _28.safeLoanCount,
-                safeLoanAmount: (_29 = extract.safeActivity) === null || _29 === void 0 ? void 0 : _29.safeLoanAmount,
-                paidInCount: (_30 = extract.safeActivity) === null || _30 === void 0 ? void 0 : _30.paidInCount,
-                paidInAmount: (_31 = extract.safeActivity) === null || _31 === void 0 ? void 0 : _31.paidInAmount,
-                paidOutCount: (_32 = extract.safeActivity) === null || _32 === void 0 ? void 0 : _32.paidOutCount,
-                paidOutAmount: (_33 = extract.safeActivity) === null || _33 === void 0 ? void 0 : _33.paidOutAmount,
+                safeDropCount: (_28 = extract.safeActivity) === null || _28 === void 0 ? void 0 : _28.safeDropCount,
+                safeDropAmount: (_29 = extract.safeActivity) === null || _29 === void 0 ? void 0 : _29.safeDropAmount,
+                safeLoanCount: (_30 = extract.safeActivity) === null || _30 === void 0 ? void 0 : _30.safeLoanCount,
+                safeLoanAmount: (_31 = extract.safeActivity) === null || _31 === void 0 ? void 0 : _31.safeLoanAmount,
+                paidInCount: (_32 = extract.safeActivity) === null || _32 === void 0 ? void 0 : _32.paidInCount,
+                paidInAmount: (_33 = extract.safeActivity) === null || _33 === void 0 ? void 0 : _33.paidInAmount,
+                paidOutCount: (_34 = extract.safeActivity) === null || _34 === void 0 ? void 0 : _34.paidOutCount,
+                paidOutAmount: (_35 = extract.safeActivity) === null || _35 === void 0 ? void 0 : _35.paidOutAmount,
                 // Metadata
                 rawText: extract.rawText,
                 extractionMethod: extract.extractionMethod,

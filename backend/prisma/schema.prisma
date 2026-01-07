@@ -25,10 +25,11 @@ model Store {
   deviceKey    String        @unique
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
-  shifts       Shift[]
-  alerts       Alert[]
-  insights     Insight[]
-  shiftReports ShiftReport[]
+  shifts        Shift[]
+  alerts        Alert[]
+  insights      Insight[]
+  shiftReports  ShiftReport[]
+  conversations Conversation[]
 
   @@index([userId])
 }
@@ -218,4 +219,46 @@ model ShiftReportException {
 
   @@index([shiftReportId])
   @@index([type])
+}
+
+// ============================================
+// CONVERSATION MODELS (Chat History)
+// ============================================
+
+model Conversation {
+  id              String    @id @default(cuid())
+  storeId         String
+  store           Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  
+  title           String    @default("New Chat")
+  isPinned        Boolean   @default(false)
+  
+  // Sharing (optional feature)
+  isShared        Boolean   @default(false)
+  shareToken      String?   @unique
+  sharePassword   String?
+  shareExpiresAt  DateTime?
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  lastMessageAt   DateTime  @default(now())
+  
+  messages        ConversationMessage[]
+  
+  @@index([storeId, lastMessageAt])
+  @@index([shareToken])
+}
+
+model ConversationMessage {
+  id              String       @id @default(cuid())
+  conversationId  String
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  role            String       // 'user' | 'assistant'
+  content         String       @db.Text
+  reportsUsed     String[]     @default([])
+  
+  createdAt       DateTime     @default(now())
+  
+  @@index([conversationId, createdAt])
 }

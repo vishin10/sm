@@ -3,6 +3,8 @@ import { z } from 'zod';
 // Confidence level for each field
 const ConfidenceLevel = z.number().min(0).max(1).optional();
 
+// -------------------- SALES / ITEMS --------------------
+
 // Department sale item
 export const DepartmentSaleSchema = z.object({
     departmentName: z.string(),
@@ -27,6 +29,8 @@ export const ExceptionSchema = z.object({
     amount: z.number().optional(),
 });
 
+// -------------------- METADATA --------------------
+
 // Store metadata section
 export const StoreMetadataSchema = z.object({
     storeName: z.string().optional(),
@@ -34,11 +38,17 @@ export const StoreMetadataSchema = z.object({
     registerId: z.string().optional(),
     operatorId: z.string().optional(),
     tillId: z.string().optional(),
-    reportPrintedAt: z.string().optional(), // ISO date string
+
+    // ISO date string
+    reportPrintedAt: z.string().optional(),
     shiftStart: z.string().optional(),
     shiftEnd: z.string().optional(),
+
+    // NOTE: This may be calendar date; business date can be derived from shiftEnd
     reportDate: z.string().optional(),
 });
+
+// -------------------- BALANCES --------------------
 
 // Balances section
 export const BalancesSchema = z.object({
@@ -50,6 +60,8 @@ export const BalancesSchema = z.object({
     confidence: ConfidenceLevel,
 });
 
+// -------------------- SALES SUMMARY --------------------
+
 // Sales summary section
 export const SalesSummarySchema = z.object({
     grossSales: z.number().optional(),
@@ -57,9 +69,15 @@ export const SalesSummarySchema = z.object({
     refunds: z.number().optional(),
     discounts: z.number().optional(),
     taxTotal: z.number().optional(),
+
+    // Many receipts call this "Transactions" or "Customers"
     totalTransactions: z.number().int().optional(),
+    customersCount: z.number().int().optional(), // NEW
+
     confidence: ConfidenceLevel,
 });
+
+// -------------------- FUEL --------------------
 
 // Fuel section
 export const FuelSchema = z.object({
@@ -69,6 +87,8 @@ export const FuelSchema = z.object({
     confidence: ConfidenceLevel,
 });
 
+// -------------------- INSIDE / MERCH --------------------
+
 // Inside/Merchandise section
 export const InsideSalesSchema = z.object({
     insideSales: z.number().optional(),
@@ -77,6 +97,8 @@ export const InsideSalesSchema = z.object({
     prepaysPumped: z.number().optional(),
     confidence: ConfidenceLevel,
 });
+
+// -------------------- TENDERS --------------------
 
 // Tender (single type)
 export const TenderSchema = z.object({
@@ -97,6 +119,31 @@ export const TendersSchema = z.object({
     confidence: ConfidenceLevel,
 });
 
+// -------------------- SAFE / TILL ACTIVITY --------------------
+
+/**
+ * Some POS systems break safe drops into:
+ * - CASHIER SAFE DROPS (usually just cash)
+ * - SYSTEM SAFE DROPS (cash/credit/debit breakdown)
+ */
+export const SafeDropsBreakdownSchema = z.object({
+    cashier: z
+        .object({
+            cashAmount: z.number().optional(),
+            totalAmount: z.number().optional(),
+        })
+        .optional(),
+
+    system: z
+        .object({
+            cashAmount: z.number().optional(),
+            creditAmount: z.number().optional(),
+            debitAmount: z.number().optional(),
+            totalAmount: z.number().optional(),
+        })
+        .optional(),
+});
+
 // Safe activity section
 export const SafeActivitySchema = z.object({
     safeDropCount: z.number().int().optional(),
@@ -107,8 +154,18 @@ export const SafeActivitySchema = z.object({
     paidInAmount: z.number().optional(),
     paidOutCount: z.number().int().optional(),
     paidOutAmount: z.number().optional(),
+
+    // NEW: safe drop breakdown
+    safeDropsBreakdown: SafeDropsBreakdownSchema.optional(),
+
+    // NEW: till payments in/out (shown on many receipts)
+    paymentsIntoTillAmount: z.number().optional(),
+    paymentsOutOfTillAmount: z.number().optional(),
+
     confidence: ConfidenceLevel,
 });
+
+// -------------------- FULL EXTRACTION --------------------
 
 // Full extraction result
 export const ShiftReportExtractSchema = z.object({
@@ -134,6 +191,8 @@ export const ShiftReportExtractSchema = z.object({
     extractionConfidence: z.number().min(0).max(1),
 });
 
+// -------------------- TYPES --------------------
+
 export type DepartmentSale = z.infer<typeof DepartmentSaleSchema>;
 export type ItemSale = z.infer<typeof ItemSaleSchema>;
 export type ShiftReportException = z.infer<typeof ExceptionSchema>;
@@ -157,6 +216,10 @@ export interface ShiftReportSummary {
     fuelSales?: number;
     insideSales?: number;
     cashVariance?: number;
+
+    // NEW (optional, because older rows may not have it)
+    customersCount?: number;
+
     topDepartments: { name: string; amount: number }[];
     topItems: { name: string; amount: number }[];
     tenderBreakdown: { type: string; amount: number }[];

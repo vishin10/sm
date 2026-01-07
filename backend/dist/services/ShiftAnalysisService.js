@@ -54,19 +54,13 @@ class ShiftAnalysisService {
                 throw new Error('OpenAI API Key not configured');
             }
             const response = yield this.openai.chat.completions.create({
-                model: "gpt-4o-mini",
+                model: 'gpt-4o-mini',
                 messages: [
-                    {
-                        role: "system",
-                        content: this.UNIVERSAL_EXTRACTION_PROMPT
-                    },
-                    {
-                        role: "user",
-                        content: `Extract all data from this receipt:\n\n${ocrText}`
-                    }
+                    { role: 'system', content: this.UNIVERSAL_EXTRACTION_PROMPT },
+                    { role: 'user', content: `Extract all data from this receipt:\n\n${ocrText}` },
                 ],
                 temperature: 0,
-                response_format: { type: "json_object" },
+                response_format: { type: 'json_object' },
                 max_tokens: 4000,
             });
             const content = response.choices[0].message.content;
@@ -74,12 +68,12 @@ class ShiftAnalysisService {
                 throw new Error('No response from OpenAI');
             const rawExtraction = JSON.parse(content);
             // Map to your schema (for database compatibility)
-            const extract = this.mapToSchema(rawExtraction, ocrText);
+            const extract = this.mapToSchema(rawExtraction, ocrText, 'openai_text');
             return {
                 extract,
                 method: 'openai_text',
                 ocrScore: 85, // Estimated since OCR was good enough to use
-                rawExtraction // Store EVERYTHING for chat queries
+                rawExtraction, // Store EVERYTHING for chat queries
             };
         });
     }
@@ -88,29 +82,24 @@ class ShiftAnalysisService {
      */
     static analyzeWithVision(imageBuffer, mimeType) {
         return __awaiter(this, void 0, void 0, function* () {
+            var _a, _b, _c, _d, _e;
             if (!process.env.OPENAI_API_KEY) {
                 throw new Error('OpenAI API Key not configured');
             }
             const base64 = imageBuffer.toString('base64');
             const response = yield this.openai.chat.completions.create({
-                model: "gpt-4o",
+                model: 'gpt-4o',
                 messages: [
                     {
-                        role: "user",
+                        role: 'user',
                         content: [
+                            { type: 'text', text: this.UNIVERSAL_EXTRACTION_PROMPT },
                             {
-                                type: "text",
-                                text: this.UNIVERSAL_EXTRACTION_PROMPT
+                                type: 'image_url',
+                                image_url: { url: `data:${mimeType};base64,${base64}`, detail: 'high' },
                             },
-                            {
-                                type: "image_url",
-                                image_url: {
-                                    url: `data:${mimeType};base64,${base64}`,
-                                    detail: "high"
-                                }
-                            }
-                        ]
-                    }
+                        ],
+                    },
                 ],
                 max_tokens: 4000,
                 temperature: 0,
@@ -128,12 +117,14 @@ class ShiftAnalysisService {
             }
             const rawExtraction = JSON.parse(jsonStr);
             // Map to your schema
-            const extract = this.mapToSchema(rawExtraction, rawExtraction.rawText || '');
+            const extract = this.mapToSchema(rawExtraction, rawExtraction.rawText || '', 'openai_vision');
+            // Quick debug log (optional but very helpful)
+            logger_1.Logger.info(`Mapped extract summary: date=${(_a = extract.storeMetadata) === null || _a === void 0 ? void 0 : _a.reportDate} start=${(_b = extract.storeMetadata) === null || _b === void 0 ? void 0 : _b.shiftStart} end=${(_c = extract.storeMetadata) === null || _c === void 0 ? void 0 : _c.shiftEnd} customers=${(_d = extract.salesSummary) === null || _d === void 0 ? void 0 : _d.customersCount} tx=${(_e = extract.salesSummary) === null || _e === void 0 ? void 0 : _e.totalTransactions}`);
             return {
                 extract,
                 method: 'openai_vision',
                 ocrScore: 0, // Vision doesn't use OCR
-                rawExtraction // Store EVERYTHING
+                rawExtraction, // Store EVERYTHING
             };
         });
     }
@@ -141,11 +132,11 @@ class ShiftAnalysisService {
      * Map AI's free-form extraction to your database schema
      * This maintains backward compatibility with your existing DB
      */
-    static mapToSchema(raw, rawText) {
-        var _a, _b, _c, _d, _e, _f, _g;
+    static mapToSchema(raw, rawText, extractionMethod) {
+        var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o, _p, _q, _r, _s, _t, _u, _v, _w, _x, _y, _z, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21;
         const extract = {
             rawText: rawText || raw.rawText || '',
-            extractionMethod: 'openai_vision',
+            extractionMethod: extractionMethod === 'openai_text' ? 'openai_text' : 'openai_vision',
             extractionConfidence: ((_a = raw.extractionMetadata) === null || _a === void 0 ? void 0 : _a.confidence) || 0.8,
         };
         // Store metadata
@@ -169,19 +160,22 @@ class ShiftAnalysisService {
                 endingBalance: raw.cashManagement.endingBalance,
                 closingAccountability: raw.cashManagement.expectedCash,
                 cashierCounted: raw.cashManagement.actualCash,
-                cashVariance: raw.cashManagement.cashVariance || raw.cashManagement.overShort,
+                cashVariance: (_b = raw.cashManagement.cashVariance) !== null && _b !== void 0 ? _b : raw.cashManagement.overShort,
                 confidence: raw.cashManagement.confidence || 0.7,
             };
         }
-        // Sales summary
+        // Sales summary (IMPORTANT: do NOT mix customers into transactions)
         if (raw.financialSummary) {
+            // NOTE: customersCount is expected to exist in your schema now
             extract.salesSummary = {
-                grossSales: raw.financialSummary.grossSales || raw.financialSummary.totalSales,
+                grossSales: (_c = raw.financialSummary.grossSales) !== null && _c !== void 0 ? _c : raw.financialSummary.totalSales,
                 netSales: raw.financialSummary.netSales,
                 refunds: raw.financialSummary.refunds,
                 discounts: raw.financialSummary.discounts,
                 taxTotal: raw.financialSummary.tax,
-                totalTransactions: raw.financialSummary.totalTransactions || raw.financialSummary.totalCustomers,
+                totalTransactions: raw.financialSummary.totalTransactions,
+                // NEW: store customers separately
+                customersCount: (_d = raw.financialSummary.totalCustomers) !== null && _d !== void 0 ? _d : raw.financialSummary.customersCount,
                 confidence: raw.financialSummary.confidence || 0.8,
             };
         }
@@ -197,7 +191,7 @@ class ShiftAnalysisService {
         // Inside sales
         if (raw.insideStoreData) {
             extract.insideSales = {
-                insideSales: raw.insideStoreData.insideSales || raw.insideStoreData.merchandiseSales,
+                insideSales: (_e = raw.insideStoreData.insideSales) !== null && _e !== void 0 ? _e : raw.insideStoreData.merchandiseSales,
                 merchandiseSales: raw.insideStoreData.merchandiseSales,
                 prepaysInitiated: raw.insideStoreData.prepayInitiated,
                 prepaysPumped: raw.insideStoreData.prepayPumped,
@@ -213,7 +207,7 @@ class ShiftAnalysisService {
                     count: method.count,
                     amount: method.amount,
                 };
-                switch (method.type.toLowerCase()) {
+                switch ((method.type || '').toLowerCase()) {
                     case 'cash':
                         extract.tenders.cash = tender;
                         break;
@@ -233,18 +227,46 @@ class ShiftAnalysisService {
                         extract.tenders.other = tender;
                 }
             }
+            // totalTenders if present anywhere
+            const totalT = (_j = (_g = (_f = raw.financialSummary) === null || _f === void 0 ? void 0 : _f.totalTenders) !== null && _g !== void 0 ? _g : (_h = raw.cashManagement) === null || _h === void 0 ? void 0 : _h.totalTenders) !== null && _j !== void 0 ? _j : (_k = raw.additionalData) === null || _k === void 0 ? void 0 : _k.totalTenders;
+            if (typeof totalT === 'number') {
+                extract.tenders.totalTenders = totalT;
+            }
         }
-        // Safe activity
+        // Safe activity (includes breakdown + payments in/out)
         if (raw.safeActivity) {
+            const cashierDropCash = (_o = (_m = (_l = raw.safeActivity) === null || _l === void 0 ? void 0 : _l.cashierSafeDrops) === null || _m === void 0 ? void 0 : _m.cash) !== null && _o !== void 0 ? _o : (_q = (_p = raw.safeActivity) === null || _p === void 0 ? void 0 : _p.cashierSafeDrops) === null || _q === void 0 ? void 0 : _q.cashAmount;
+            const cashierDropTotal = (_t = (_s = (_r = raw.safeActivity) === null || _r === void 0 ? void 0 : _r.cashierSafeDrops) === null || _s === void 0 ? void 0 : _s.total) !== null && _t !== void 0 ? _t : (_v = (_u = raw.safeActivity) === null || _u === void 0 ? void 0 : _u.cashierSafeDrops) === null || _v === void 0 ? void 0 : _v.totalAmount;
+            const systemDropCash = (_y = (_x = (_w = raw.safeActivity) === null || _w === void 0 ? void 0 : _w.systemSafeDrops) === null || _x === void 0 ? void 0 : _x.cash) !== null && _y !== void 0 ? _y : (_0 = (_z = raw.safeActivity) === null || _z === void 0 ? void 0 : _z.systemSafeDrops) === null || _0 === void 0 ? void 0 : _0.cashAmount;
+            const systemDropCredit = (_3 = (_2 = (_1 = raw.safeActivity) === null || _1 === void 0 ? void 0 : _1.systemSafeDrops) === null || _2 === void 0 ? void 0 : _2.credit) !== null && _3 !== void 0 ? _3 : (_5 = (_4 = raw.safeActivity) === null || _4 === void 0 ? void 0 : _4.systemSafeDrops) === null || _5 === void 0 ? void 0 : _5.creditAmount;
+            const systemDropDebit = (_8 = (_7 = (_6 = raw.safeActivity) === null || _6 === void 0 ? void 0 : _6.systemSafeDrops) === null || _7 === void 0 ? void 0 : _7.debit) !== null && _8 !== void 0 ? _8 : (_10 = (_9 = raw.safeActivity) === null || _9 === void 0 ? void 0 : _9.systemSafeDrops) === null || _10 === void 0 ? void 0 : _10.debitAmount;
+            const systemDropTotal = (_13 = (_12 = (_11 = raw.safeActivity) === null || _11 === void 0 ? void 0 : _11.systemSafeDrops) === null || _12 === void 0 ? void 0 : _12.total) !== null && _13 !== void 0 ? _13 : (_15 = (_14 = raw.safeActivity) === null || _14 === void 0 ? void 0 : _14.systemSafeDrops) === null || _15 === void 0 ? void 0 : _15.totalAmount;
+            // NOTE: safeDropsBreakdown + paymentsIntoTillAmount/out are expected in your schema now
             extract.safeActivity = {
-                safeDropCount: ((_b = raw.safeActivity.drops) === null || _b === void 0 ? void 0 : _b.length) || null,
+                safeDropCount: Array.isArray(raw.safeActivity.drops) ? raw.safeActivity.drops.length : undefined,
                 safeDropAmount: raw.safeActivity.totalDrops,
-                safeLoanCount: ((_c = raw.safeActivity.loans) === null || _c === void 0 ? void 0 : _c.length) || null,
+                safeLoanCount: Array.isArray(raw.safeActivity.loans) ? raw.safeActivity.loans.length : undefined,
                 safeLoanAmount: raw.safeActivity.totalLoans,
-                paidInCount: (_d = raw.safeActivity.paidIn) === null || _d === void 0 ? void 0 : _d.count,
-                paidInAmount: (_e = raw.safeActivity.paidIn) === null || _e === void 0 ? void 0 : _e.amount,
-                paidOutCount: (_f = raw.safeActivity.paidOut) === null || _f === void 0 ? void 0 : _f.count,
-                paidOutAmount: (_g = raw.safeActivity.paidOut) === null || _g === void 0 ? void 0 : _g.amount,
+                paidInCount: (_16 = raw.safeActivity.paidIn) === null || _16 === void 0 ? void 0 : _16.count,
+                paidInAmount: (_17 = raw.safeActivity.paidIn) === null || _17 === void 0 ? void 0 : _17.amount,
+                paidOutCount: (_18 = raw.safeActivity.paidOut) === null || _18 === void 0 ? void 0 : _18.count,
+                paidOutAmount: (_19 = raw.safeActivity.paidOut) === null || _19 === void 0 ? void 0 : _19.amount,
+                // NEW: breakdown (cashier vs system)
+                safeDropsBreakdown: {
+                    cashier: {
+                        cashAmount: cashierDropCash,
+                        totalAmount: cashierDropTotal,
+                    },
+                    system: {
+                        cashAmount: systemDropCash,
+                        creditAmount: systemDropCredit,
+                        debitAmount: systemDropDebit,
+                        totalAmount: systemDropTotal,
+                    },
+                },
+                // NEW: payments in/out
+                paymentsIntoTillAmount: (_20 = raw.safeActivity.paymentsIntoTillAmount) !== null && _20 !== void 0 ? _20 : raw.safeActivity.paymentsIntoTill,
+                paymentsOutOfTillAmount: (_21 = raw.safeActivity.paymentsOutOfTillAmount) !== null && _21 !== void 0 ? _21 : raw.safeActivity.paymentsOutOfTill,
                 confidence: raw.safeActivity.confidence || 0.7,
             };
         }
@@ -367,6 +389,13 @@ REQUIRED STRUCTURE (but add more fields as needed):
     "paidOut": { "count": number or null, "amount": number or null },
     "totalDrops": number or null,
     "totalLoans": number or null,
+
+    "cashierSafeDrops": { "cash": number or null, "total": number or null },
+    "systemSafeDrops": { "cash": number or null, "credit": number or null, "debit": number or null, "total": number or null },
+
+    "paymentsIntoTill": number or null,
+    "paymentsOutOfTill": number or null,
+
     "confidence": 0-1
   },
   
@@ -403,13 +432,10 @@ REQUIRED STRUCTURE (but add more fields as needed):
   
   "additionalData": {
     // PUT ANY OTHER DATA YOU FIND HERE
-    // Examples: lottery sales, car wash, promotions, coupons, etc.
-    // Use descriptive field names based on what you see
   },
   
   "rawSections": {
     // Store sections you found but couldn't categorize
-    // Format: { "sectionName": "raw text content" }
   },
   
   "extractionMetadata": {

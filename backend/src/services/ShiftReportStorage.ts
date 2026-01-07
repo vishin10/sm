@@ -38,12 +38,29 @@ export class ShiftReportStorage {
         });
 
         // Determine report date
+        // Determine BUSINESS report date (important for night shifts)
         let reportDate = new Date();
-        if (extract.storeMetadata?.reportDate) {
-            try {
+
+        try {
+            if (extract.storeMetadata?.shiftEnd) {
+                // Night shifts belong to the day they END
+                reportDate = new Date(extract.storeMetadata.shiftEnd);
+            } else if (extract.storeMetadata?.reportPrintedAt) {
+                reportDate = new Date(extract.storeMetadata.reportPrintedAt);
+            } else if (extract.storeMetadata?.reportDate) {
                 reportDate = new Date(extract.storeMetadata.reportDate);
-            } catch { }
+            }
+        } catch {
+            reportDate = new Date();
         }
+
+        // Normalize to date-only (avoid timezone edge cases)
+        reportDate = new Date(
+            reportDate.getFullYear(),
+            reportDate.getMonth(),
+            reportDate.getDate()
+        );
+
 
         // Build the data object (shared between create and update)
         const reportData = {

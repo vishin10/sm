@@ -17,6 +17,7 @@ import reportRoutes from './routes/report.routes';
 import shiftAnalysisRoutes from './routes/shiftAnalysis.routes';
 import shiftReportRoutes from './routes/shiftReport.routes';
 import chatRoutes from './routes/chat.routes';
+import { startConversationCleanupJob } from './jobs/conversationCleanup';
 
 dotenv.config();
 
@@ -57,4 +58,7 @@ app.use(errorHandler);
 
 export const server = app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+
+    // Start background jobs
+    startConversationCleanupJob();
 });

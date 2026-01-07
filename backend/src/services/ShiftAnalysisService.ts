@@ -4,7 +4,6 @@ import { ShiftReportExtract, ShiftReportExtractSchema } from '../types/shiftRepo
 import { OCRService } from './OCRService';
 import { QualityScorer } from './QualityScorer';
 
-
 // Helper: Convert null to undefined for Zod
 function nullToUndefined(obj: any): any {
     if (obj === null) return undefined;
@@ -17,6 +16,7 @@ function nullToUndefined(obj: any): any {
     }
     return result;
 }
+
 export interface AnalysisResult {
     extract: ShiftReportExtract;
     method: 'openai_vision' | 'openai_text';
@@ -124,6 +124,13 @@ REQUIRED STRUCTURE (but add more fields as needed):
     "paidOut": { "count": number or null, "amount": number or null },
     "totalDrops": number or null,
     "totalLoans": number or null,
+
+    "cashierSafeDrops": { "cash": number or null, "total": number or null },
+    "systemSafeDrops": { "cash": number or null, "credit": number or null, "debit": number or null, "total": number or null },
+
+    "paymentsIntoTill": number or null,
+    "paymentsOutOfTill": number or null,
+
     "confidence": 0-1
   },
   
@@ -160,13 +167,10 @@ REQUIRED STRUCTURE (but add more fields as needed):
   
   "additionalData": {
     // PUT ANY OTHER DATA YOU FIND HERE
-    // Examples: lottery sales, car wash, promotions, coupons, etc.
-    // Use descriptive field names based on what you see
   },
   
   "rawSections": {
     // Store sections you found but couldn't categorize
-    // Format: { "sectionName": "raw text content" }
   },
   
   "extractionMetadata": {
@@ -207,19 +211,13 @@ Respond ONLY with valid JSON matching this structure.`;
         }
 
         const response = await this.openai.chat.completions.create({
-            model: "gpt-4o-mini",
+            model: 'gpt-4o-mini',
             messages: [
-                {
-                    role: "system",
-                    content: this.UNIVERSAL_EXTRACTION_PROMPT
-                },
-                {
-                    role: "user",
-                    content: `Extract all data from this receipt:\n\n${ocrText}`
-                }
+                { role: 'system', content: this.UNIVERSAL_EXTRACTION_PROMPT },
+                { role: 'user', content: `Extract all data from this receipt:\n\n${ocrText}` },
             ],
             temperature: 0,
-            response_format: { type: "json_object" },
+            response_format: { type: 'json_object' },
             max_tokens: 4000,
         });
 
@@ -229,13 +227,13 @@ Respond ONLY with valid JSON matching this structure.`;
         const rawExtraction = JSON.parse(content);
 
         // Map to your schema (for database compatibility)
-        const extract = this.mapToSchema(rawExtraction, ocrText);
+        const extract = this.mapToSchema(rawExtraction, ocrText, 'openai_text');
 
         return {
             extract,
             method: 'openai_text',
             ocrScore: 85, // Estimated since OCR was good enough to use
-            rawExtraction // Store EVERYTHING for chat queries
+            rawExtraction, // Store EVERYTHING for chat queries
         };
     }
 
@@ -253,24 +251,18 @@ Respond ONLY with valid JSON matching this structure.`;
         const base64 = imageBuffer.toString('base64');
 
         const response = await this.openai.chat.completions.create({
-            model: "gpt-4o",
+            model: 'gpt-4o',
             messages: [
                 {
-                    role: "user",
+                    role: 'user',
                     content: [
+                        { type: 'text', text: this.UNIVERSAL_EXTRACTION_PROMPT },
                         {
-                            type: "text",
-                            text: this.UNIVERSAL_EXTRACTION_PROMPT
+                            type: 'image_url',
+                            image_url: { url: `data:${mimeType};base64,${base64}`, detail: 'high' },
                         },
-                        {
-                            type: "image_url",
-                            image_url: {
-                                url: `data:${mimeType};base64,${base64}`,
-                                detail: "high"
-                            }
-                        }
-                    ]
-                }
+                    ],
+                },
             ],
             max_tokens: 4000,
             temperature: 0,
@@ -290,13 +282,18 @@ Respond ONLY with valid JSON matching this structure.`;
         const rawExtraction = JSON.parse(jsonStr);
 
         // Map to your schema
-        const extract = this.mapToSchema(rawExtraction, rawExtraction.rawText || '');
+        const extract = this.mapToSchema(rawExtraction, rawExtraction.rawText || '', 'openai_vision');
+
+        // Quick debug log (optional but very helpful)
+        Logger.info(
+            `Mapped extract summary: date=${extract.storeMetadata?.reportDate} start=${extract.storeMetadata?.shiftStart} end=${extract.storeMetadata?.shiftEnd} customers=${(extract as any).salesSummary?.customersCount} tx=${extract.salesSummary?.totalTransactions}`
+        );
 
         return {
             extract,
             method: 'openai_vision',
             ocrScore: 0, // Vision doesn't use OCR
-            rawExtraction // Store EVERYTHING
+            rawExtraction, // Store EVERYTHING
         };
     }
 
@@ -304,10 +301,14 @@ Respond ONLY with valid JSON matching this structure.`;
      * Map AI's free-form extraction to your database schema
      * This maintains backward compatibility with your existing DB
      */
-    private static mapToSchema(raw: any, rawText: string): ShiftReportExtract {
+    private static mapToSchema(
+        raw: any,
+        rawText: string,
+        extractionMethod: 'openai_vision' | 'openai_text'
+    ): ShiftReportExtract {
         const extract: Partial<ShiftReportExtract> = {
             rawText: rawText || raw.rawText || '',
-            extractionMethod: 'openai_vision',
+            extractionMethod: extractionMethod === 'openai_text' ? 'openai_text' : 'openai_vision',
             extractionConfidence: raw.extractionMetadata?.confidence || 0.8,
         };
 
@@ -333,20 +334,26 @@ Respond ONLY with valid JSON matching this structure.`;
                 endingBalance: raw.cashManagement.endingBalance,
                 closingAccountability: raw.cashManagement.expectedCash,
                 cashierCounted: raw.cashManagement.actualCash,
-                cashVariance: raw.cashManagement.cashVariance || raw.cashManagement.overShort,
+                cashVariance: raw.cashManagement.cashVariance ?? raw.cashManagement.overShort,
                 confidence: raw.cashManagement.confidence || 0.7,
             };
         }
 
-        // Sales summary
+        // Sales summary (IMPORTANT: do NOT mix customers into transactions)
         if (raw.financialSummary) {
-            extract.salesSummary = {
-                grossSales: raw.financialSummary.grossSales || raw.financialSummary.totalSales,
+            // NOTE: customersCount is expected to exist in your schema now
+            (extract as any).salesSummary = {
+                grossSales: raw.financialSummary.grossSales ?? raw.financialSummary.totalSales,
                 netSales: raw.financialSummary.netSales,
                 refunds: raw.financialSummary.refunds,
                 discounts: raw.financialSummary.discounts,
                 taxTotal: raw.financialSummary.tax,
-                totalTransactions: raw.financialSummary.totalTransactions || raw.financialSummary.totalCustomers,
+
+                totalTransactions: raw.financialSummary.totalTransactions,
+
+                // NEW: store customers separately
+                customersCount: raw.financialSummary.totalCustomers ?? raw.financialSummary.customersCount,
+
                 confidence: raw.financialSummary.confidence || 0.8,
             };
         }
@@ -364,7 +371,7 @@ Respond ONLY with valid JSON matching this structure.`;
         // Inside sales
         if (raw.insideStoreData) {
             extract.insideSales = {
-                insideSales: raw.insideStoreData.insideSales || raw.insideStoreData.merchandiseSales,
+                insideSales: raw.insideStoreData.insideSales ?? raw.insideStoreData.merchandiseSales,
                 merchandiseSales: raw.insideStoreData.merchandiseSales,
                 prepaysInitiated: raw.insideStoreData.prepayInitiated,
                 prepaysPumped: raw.insideStoreData.prepayPumped,
@@ -383,7 +390,7 @@ Respond ONLY with valid JSON matching this structure.`;
                     amount: method.amount,
                 };
 
-                switch (method.type.toLowerCase()) {
+                switch (((method.type || '') as string).toLowerCase()) {
                     case 'cash':
                         extract.tenders.cash = tender;
                         break;
@@ -403,19 +410,73 @@ Respond ONLY with valid JSON matching this structure.`;
                         extract.tenders.other = tender;
                 }
             }
+
+            // totalTenders if present anywhere
+            const totalT =
+                raw.financialSummary?.totalTenders ??
+                raw.cashManagement?.totalTenders ??
+                raw.additionalData?.totalTenders;
+
+            if (typeof totalT === 'number') {
+                extract.tenders.totalTenders = totalT;
+            }
         }
 
-        // Safe activity
+        // Safe activity (includes breakdown + payments in/out)
         if (raw.safeActivity) {
-            extract.safeActivity = {
-                safeDropCount: raw.safeActivity.drops?.length || null,
+            const cashierDropCash =
+                raw.safeActivity?.cashierSafeDrops?.cash ??
+                raw.safeActivity?.cashierSafeDrops?.cashAmount;
+
+            const cashierDropTotal =
+                raw.safeActivity?.cashierSafeDrops?.total ??
+                raw.safeActivity?.cashierSafeDrops?.totalAmount;
+
+            const systemDropCash =
+                raw.safeActivity?.systemSafeDrops?.cash ??
+                raw.safeActivity?.systemSafeDrops?.cashAmount;
+
+            const systemDropCredit =
+                raw.safeActivity?.systemSafeDrops?.credit ??
+                raw.safeActivity?.systemSafeDrops?.creditAmount;
+
+            const systemDropDebit =
+                raw.safeActivity?.systemSafeDrops?.debit ??
+                raw.safeActivity?.systemSafeDrops?.debitAmount;
+
+            const systemDropTotal =
+                raw.safeActivity?.systemSafeDrops?.total ??
+                raw.safeActivity?.systemSafeDrops?.totalAmount;
+
+            // NOTE: safeDropsBreakdown + paymentsIntoTillAmount/out are expected in your schema now
+            (extract as any).safeActivity = {
+                safeDropCount: Array.isArray(raw.safeActivity.drops) ? raw.safeActivity.drops.length : undefined,
                 safeDropAmount: raw.safeActivity.totalDrops,
-                safeLoanCount: raw.safeActivity.loans?.length || null,
+                safeLoanCount: Array.isArray(raw.safeActivity.loans) ? raw.safeActivity.loans.length : undefined,
                 safeLoanAmount: raw.safeActivity.totalLoans,
                 paidInCount: raw.safeActivity.paidIn?.count,
                 paidInAmount: raw.safeActivity.paidIn?.amount,
                 paidOutCount: raw.safeActivity.paidOut?.count,
                 paidOutAmount: raw.safeActivity.paidOut?.amount,
+
+                // NEW: breakdown (cashier vs system)
+                safeDropsBreakdown: {
+                    cashier: {
+                        cashAmount: cashierDropCash,
+                        totalAmount: cashierDropTotal,
+                    },
+                    system: {
+                        cashAmount: systemDropCash,
+                        creditAmount: systemDropCredit,
+                        debitAmount: systemDropDebit,
+                        totalAmount: systemDropTotal,
+                    },
+                },
+
+                // NEW: payments in/out
+                paymentsIntoTillAmount: raw.safeActivity.paymentsIntoTillAmount ?? raw.safeActivity.paymentsIntoTill,
+                paymentsOutOfTillAmount: raw.safeActivity.paymentsOutOfTillAmount ?? raw.safeActivity.paymentsOutOfTill,
+
                 confidence: raw.safeActivity.confidence || 0.7,
             };
         }
