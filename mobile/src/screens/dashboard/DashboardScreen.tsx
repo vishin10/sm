@@ -1,573 +1,593 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, RefreshControl, ActivityIndicator, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+    View,
+    Text,
+    ScrollView,
+    StyleSheet,
+    TouchableOpacity,
+    RefreshControl,
+    ActivityIndicator,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { colors, getThemeColors } from '../../theme/colors';
 import { useThemeStore } from '../../store/themeStore';
 import { useStoreStore } from '../../store/storeStore';
-import { shiftsApi, alertsApi, storesApi } from '../../api';
-import { format, parseISO } from 'date-fns';
-
-interface DashboardMetrics {
-    sales: number;
-    transactionCount: number;
-    cashVariance: number;
-    criticalAlerts: number;
-}
-
-interface DashboardData {
-    metrics: DashboardMetrics;
-    source: 'today' | 'lastShift' | 'empty';
-    sourceLabel: string;
-    lastUpdated: Date | null;
-    shiftDate?: string;
-}
+import { getTodayStats, TodayStats, Alert } from '../../api/dashboard';
 
 export default function DashboardScreen() {
     const { theme } = useThemeStore();
     const themeColors = getThemeColors(theme);
+    const styles = useMemo(() => createStyles(themeColors), [themeColors]);
+
     const navigation = useNavigation();
-    const { selectedStore, loadSelectedStore, stores } = useStoreStore();
+    const { selectedStore } = useStoreStore();
+
+    const [stats, setStats] = useState<TodayStats | null>(null);
+    const [alerts, setAlerts] = useState<Alert[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
-    const [data, setData] = useState<DashboardData>({
-        metrics: {
-            sales: 0,
-            transactionCount: 0,
-            cashVariance: 0,
-            criticalAlerts: 0,
-        },
-        source: 'empty',
-        sourceLabel: 'No data available',
-        lastUpdated: null,
-    });
 
-    const fetchStoresAndData = async () => {
-        try {
-            if (stores.length === 0) {
-                const storesRes = await storesApi.getStores();
-                await loadSelectedStore(storesRes.stores);
-            }
-        } catch (error) {
-            console.error('Error loading stores:', error);
-        }
-    };
+    useEffect(() => {
+        loadData();
+    }, [selectedStore]);
 
-    const fetchDashboardData = async () => {
+    const loadData = async () => {
         if (!selectedStore) return;
+        console.log('Loading dashboard for store:', selectedStore.id);  // ADD THIS
 
         try {
-            // Fetch alerts first (always show current alerts)
-            const alertsRes = await alertsApi.getAlerts({
-                storeId: selectedStore.id,
-                severity: 'critical',
-                resolved: false
-            });
-            const criticalAlerts = alertsRes.alerts.length;
+            const data = await getTodayStats(selectedStore.id);
+            console.log('Dashboard data received:', data);  // ADD THIS
 
-            // Try to fetch today's data first
-            const today = new Date();
-            const todayStr = format(today, 'yyyy-MM-dd');
-            const todayShiftsRes = await shiftsApi.getShifts({
-                storeId: selectedStore.id,
-                startDate: todayStr,
-                endDate: todayStr
-            });
-
-            // Check if today has meaningful data
-            const todaySales = todayShiftsRes.shifts.reduce((sum, s) => sum + parseFloat(s.totalSales || '0'), 0);
-            const todayTransactions = todayShiftsRes.shifts.reduce((sum, s) => sum + (s.customerCount || 0), 0);
-            const todayCashVariance = todayShiftsRes.shifts.reduce((sum, s) => sum + parseFloat(s.cashVariance || '0'), 0);
-
-            // If today has data, use it
-            if (todayShiftsRes.shifts.length > 0 && todaySales > 0) {
-                setData({
-                    metrics: {
-                        sales: todaySales,
-                        transactionCount: todayTransactions,
-                        cashVariance: todayCashVariance,
-                        criticalAlerts,
-                    },
-                    source: 'today',
-                    sourceLabel: 'Current Shift',
-                    lastUpdated: new Date(),
-                });
-                return;
-            }
-
-            // Fallback: Get most recent completed shift
-            const recentShiftsRes = await shiftsApi.getShifts({
-                storeId: selectedStore.id,
-                limit: 10
-            });
-
-            // Find the most recent shift with actual data
-            const lastShift = recentShiftsRes.shifts.find(s => {
-                const sales = parseFloat(s.totalSales || '0');
-                return sales > 0;
-            });
-
-            if (lastShift) {
-                const shiftDate = lastShift.startAt
-                    ? parseISO(lastShift.startAt)
-                    : parseISO(lastShift.createdAt);
-
-                setData({
-                    metrics: {
-                        sales: parseFloat(lastShift.totalSales || '0'),
-                        transactionCount: lastShift.customerCount || 0,
-                        cashVariance: parseFloat(lastShift.cashVariance || '0'),
-                        criticalAlerts,
-                    },
-                    source: 'lastShift',
-                    sourceLabel: 'Last Shift',
-                    lastUpdated: shiftDate,
-                    shiftDate: format(shiftDate, 'MMM d, yyyy'),
-                });
-                return;
-            }
-
-            // No data at all
-            setData({
-                metrics: {
-                    sales: 0,
-                    transactionCount: 0,
-                    cashVariance: 0,
-                    criticalAlerts,
-                },
-                source: 'empty',
-                sourceLabel: 'No Register Data',
-                lastUpdated: null,
-            });
-
+            setStats(data.stats);
+            setAlerts(data.alerts);
         } catch (error) {
-            console.error('Dashboard fetch error:', error);
+            console.error('Failed to load dashboard:', error);
         } finally {
             setLoading(false);
             setRefreshing(false);
         }
     };
 
-    useEffect(() => {
-        fetchStoresAndData();
-    }, []);
-
-    useEffect(() => {
-        if (selectedStore) {
-            setLoading(true);
-            fetchDashboardData();
-        }
-    }, [selectedStore?.id]);
-
-    const onRefresh = useCallback(() => {
+    const onRefresh = () => {
         setRefreshing(true);
-        fetchDashboardData();
-    }, [selectedStore?.id]);
-
-    const formatCurrency = (value: number) => {
-        return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+        loadData();
     };
 
-    const styles = createStyles(themeColors);
+    const formatCurrency = (value: number | undefined | null) => {
+        const safeValue = value ?? 0;
+        return `$${safeValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    };
+
+    const formatPercent = (value: number) => {
+        const sign = value >= 0 ? '+' : '';
+        return `${sign}${value.toFixed(1)}%`;
+    };
+
+    const getChangeColor = (value: number) => {
+        if (value > 0) return colors.semantic.success;
+        if (value < 0) return colors.semantic.error;
+        return themeColors.textSecondary;
+    };
+
+    const getChangeIcon = (value: number) => {
+        if (value > 0) return 'trending-up';
+        if (value < 0) return 'trending-down';
+        return 'remove';
+    };
 
     if (loading) {
         return (
-            <View style={styles.loadingContainer}>
+            <View style={[styles.container, styles.centerContent]}>
                 <ActivityIndicator size="large" color={colors.primary[500]} />
             </View>
         );
     }
 
-    // Determine if we should show empty state or actual data
-    const hasData = data.source !== 'empty' || data.metrics.criticalAlerts > 0;
+    if (!stats) {
+        return (
+            <View style={styles.container}>
+                <View style={styles.header}>
+                    <View>
+                        <Text style={styles.storeName}>{selectedStore?.name}</Text>
+                        <Text style={styles.date}>
+                            {new Date().toLocaleDateString('en-US', {
+                                weekday: 'long',
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                            })}
+                        </Text>
+                    </View>
+                    <View style={styles.headerActions}>
+                        <TouchableOpacity style={styles.headerButton} onPress={onRefresh}>
+                            <Ionicons name="refresh" size={22} color={colors.primary[500]} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.headerButton}
+                            onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
+                        >
+                            <Ionicons name="menu" size={24} color={colors.primary[500]} />
+                        </TouchableOpacity>
+                    </View>
+                </View>
+
+                <View style={styles.emptyState}>
+                    <Ionicons name="document-outline" size={64} color={themeColors.textSecondary} />
+                    <Text style={styles.emptyTitle}>No Register Data Yet</Text>
+                    <Text style={styles.emptyText}>
+                        Upload your first shift report to see your store metrics.
+                    </Text>
+                    <TouchableOpacity
+                        style={styles.uploadButton}
+                        onPress={() => (navigation as any).navigate('UploadShiftReport')}
+                    >
+                        <Ionicons name="cloud-upload-outline" size={20} color="#FFFFFF" />
+                        <Text style={styles.uploadButtonText}>Upload Report</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        );
+    }
+
+    const isToday = stats.date === new Date().toISOString().split('T')[0];
 
     return (
         <View style={styles.container}>
             <View style={styles.header}>
                 <View>
-                    <Text style={styles.storeName}>{selectedStore?.name || 'My Store'}</Text>
-                    <Text style={styles.date}>{format(new Date(), 'EEEE, MMMM d, yyyy')}</Text>
+                    <Text style={styles.storeName}>{selectedStore?.name}</Text>
+                    <Text style={styles.date}>
+                        {new Date().toLocaleDateString('en-US', {
+                            weekday: 'long',
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                        })}
+                    </Text>
                 </View>
                 <View style={styles.headerActions}>
                     <TouchableOpacity style={styles.headerButton} onPress={onRefresh}>
                         <Ionicons name="refresh" size={22} color={colors.primary[500]} />
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.headerButton} onPress={() => navigation.dispatch(DrawerActions.openDrawer())}>
+                    <TouchableOpacity
+                        style={styles.headerButton}
+                        onPress={() => navigation.dispatch(DrawerActions.openDrawer())}
+                    >
                         <Ionicons name="menu" size={24} color={colors.primary[500]} />
                     </TouchableOpacity>
                 </View>
             </View>
 
             <ScrollView
-                contentContainerStyle={styles.content}
+                style={styles.content}
                 refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary[500]} />
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
                 }
             >
-                {/* Data Source Label */}
                 <View style={styles.sourceContainer}>
                     <View style={[
                         styles.sourceBadge,
-                        data.source === 'today' && styles.sourceBadgeToday,
-                        data.source === 'lastShift' && styles.sourceBadgeLastShift,
-                        data.source === 'empty' && styles.sourceBadgeEmpty,
+                        isToday ? styles.sourceBadgeToday : styles.sourceBadgeLastShift
                     ]}>
                         <Ionicons
-                            name={data.source === 'today' ? 'time' : data.source === 'lastShift' ? 'calendar' : 'alert-circle'}
+                            name={isToday ? 'time' : 'calendar'}
                             size={14}
-                            color={data.source === 'today' ? colors.semantic.success : data.source === 'lastShift' ? colors.primary[500] : themeColors.textSecondary}
+                            color={isToday ? colors.semantic.success : colors.primary[500]}
                         />
                         <Text style={[
                             styles.sourceLabel,
-                            data.source === 'today' && styles.sourceLabelToday,
-                            data.source === 'lastShift' && styles.sourceLabelLastShift,
+                            isToday ? styles.sourceLabelToday : styles.sourceLabelLastShift
                         ]}>
-                            {data.sourceLabel}
+                            {isToday
+                                ? stats.shiftCount > 1
+                                    ? `TODAY (${stats.shiftCount} shifts)`
+                                    : 'TODAY'
+                                : `LAST SHIFT - ${new Date(stats.date).toLocaleDateString()}`
+                            }
                         </Text>
                     </View>
-                    {data.lastUpdated && (
-                        <Text style={styles.lastUpdated}>
-                            Last updated: {format(data.lastUpdated, 'MMM d, h:mm a')}
-                        </Text>
-                    )}
-                </View>
-
-                {/* Main Metrics */}
-                <View style={styles.metricGrid}>
-                    <View style={[styles.card, styles.metricCard]}>
-                        <View style={styles.metricHeader}>
-                            <Ionicons name="trending-up" size={18} color={colors.semantic.success} />
-                            <Text style={styles.metricLabel}>Register Sales</Text>
-                        </View>
-                        <Text style={styles.metricValue}>
-                            {data.source === 'empty' ? '—' : formatCurrency(data.metrics.sales)}
-                        </Text>
-                        {data.shiftDate && data.source === 'lastShift' && (
-                            <Text style={styles.metricSubtext}>{data.shiftDate}</Text>
-                        )}
-                    </View>
-                    <View style={[styles.card, styles.metricCard]}>
-                        <View style={styles.metricHeader}>
-                            <Ionicons name="people" size={18} color={colors.primary[500]} />
-                            <Text style={styles.metricLabel}>Customer Count</Text>
-                        </View>
-                        <Text style={styles.metricValue}>
-                            {data.source === 'empty' ? '—' : data.metrics.transactionCount}
-                        </Text>
-                        {data.shiftDate && data.source === 'lastShift' && (
-                            <Text style={styles.metricSubtext}>{data.shiftDate}</Text>
-                        )}
+                    <View style={styles.monthlySalesBadge}>
+                        <Ionicons name="calendar-outline" size={14} color={colors.primary[500]} />
+                        <Text style={styles.monthlySalesLabel}>THIS MONTH</Text>
+                        <Text style={styles.monthlySalesValue}>{formatCurrency(stats.monthlySales)}</Text>
                     </View>
                 </View>
 
                 <View style={styles.metricGrid}>
-                    <View style={[styles.card, styles.metricCard]}>
+                    <View style={styles.metricCard}>
                         <View style={styles.metricHeader}>
+                            <Ionicons name="stats-chart" size={20} color={colors.semantic.success} />
+                            <Text style={styles.metricLabel}>Total Sales</Text>
+                        </View>
+                        <Text style={styles.metricValue}>{formatCurrency(stats.totalSales)}</Text>
+                        <View style={styles.metricChange}>
                             <Ionicons
-                                name="cash"
-                                size={18}
-                                color={data.metrics.cashVariance >= 0 ? colors.semantic.success : colors.semantic.error}
+                                name={getChangeIcon(stats.averageChange.sales)}
+                                size={14}
+                                color={getChangeColor(stats.averageChange.sales)}
                             />
-                            <Text style={styles.metricLabel}>Drawer Over/Short</Text>
+                            <Text style={[styles.changeText, { color: getChangeColor(stats.averageChange.sales) }]}>
+                                {formatPercent(stats.averageChange.sales)} vs avg
+                            </Text>
                         </View>
-                        <Text style={[
-                            styles.metricValue,
-                            {
-                                color: data.source === 'empty'
-                                    ? themeColors.textSecondary
-                                    : data.metrics.cashVariance >= 0
-                                        ? colors.semantic.success
-                                        : colors.semantic.error
-                            }
-                        ]}>
-                            {data.source === 'empty'
-                                ? '—'
-                                : `${data.metrics.cashVariance >= 0 ? '+' : ''}${formatCurrency(data.metrics.cashVariance)}`
-                            }
-                        </Text>
-                        {data.shiftDate && data.source === 'lastShift' && (
-                            <Text style={styles.metricSubtext}>{data.shiftDate}</Text>
-                        )}
                     </View>
-                    <View style={[
-                        styles.card,
-                        styles.metricCard,
-                        data.metrics.criticalAlerts > 0 && styles.alertCard
+
+                    <View style={styles.metricCard}>
+                        <View style={styles.metricHeader}>
+                            <Ionicons name="people" size={20} color={colors.primary[500]} />
+                            <Text style={styles.metricLabel}>Customers</Text>
+                        </View>
+                        <Text style={styles.metricValue}>{stats.customerCount}</Text>
+                        <View style={styles.metricChange}>
+                            <Ionicons
+                                name={getChangeIcon(stats.averageChange.customers)}
+                                size={14}
+                                color={getChangeColor(stats.averageChange.customers)}
+                            />
+                            <Text style={[styles.changeText, { color: getChangeColor(stats.averageChange.customers) }]}>
+                                {formatPercent(stats.averageChange.customers)} vs avg
+                            </Text>
+                        </View>
+                    </View>
+                </View>
+
+                <View style={styles.metricGrid}>
+                    <View style={styles.metricCard}>
+                        <View style={styles.metricHeader}>
+                            <Ionicons name="speedometer" size={20} color={colors.primary[500]} />
+                            <Text style={styles.metricLabel}>Fuel Sales</Text>
+                        </View>
+                        <Text style={styles.metricValue}>{formatCurrency(stats.fuelSales)}</Text>
+                    </View>
+
+                    <View style={styles.metricCard}>
+                        <View style={styles.metricHeader}>
+                            <Ionicons name="storefront" size={20} color={colors.primary[500]} />
+                            <Text style={styles.metricLabel}>Inside Sales</Text>
+                        </View>
+                        <Text style={styles.metricValue}>{formatCurrency(stats.insideSales)}</Text>
+                    </View>
+                </View>
+
+                <View style={[
+                    styles.varianceCard,
+                    stats.cashVariance > 0
+                        ? styles.varianceOver
+                        : stats.cashVariance < 0
+                            ? styles.varianceShort
+                            : styles.varianceNeutral
+                ]}>
+                    <View style={styles.varianceHeader}>
+                        <Ionicons
+                            name="cash"
+                            size={20}
+                            color={stats.cashVariance > 0
+                                ? colors.semantic.success
+                                : stats.cashVariance < 0
+                                    ? colors.semantic.error
+                                    : themeColors.textSecondary
+                            }
+                        />
+                        <Text style={styles.varianceLabel}>Cash Variance</Text>
+                    </View>
+                    <Text style={[
+                        styles.varianceValue,
+                        {
+                            color: stats.cashVariance > 0
+                                ? colors.semantic.success
+                                : stats.cashVariance < 0
+                                    ? colors.semantic.error
+                                    : themeColors.textPrimary
+                        }
                     ]}>
-                        <View style={styles.metricHeader}>
-                            <Ionicons
-                                name="warning"
-                                size={18}
-                                color={data.metrics.criticalAlerts > 0 ? colors.semantic.error : colors.semantic.success}
-                            />
-                            <Text style={styles.metricLabel}>Store Alerts</Text>
-                        </View>
-                        <Text style={[
-                            styles.metricValue,
-                            data.metrics.criticalAlerts > 0 && { color: colors.semantic.error }
-                        ]}>
-                            {data.metrics.criticalAlerts}
-                        </Text>
-                    </View>
+                        {formatCurrency(Math.abs(stats.cashVariance))}
+                        {stats.cashVariance > 0 ? ' (over)' : stats.cashVariance < 0 ? ' (short)' : ''}
+                    </Text>
                 </View>
 
-                {/* Empty State Message */}
-                {data.source === 'empty' && data.metrics.criticalAlerts === 0 && (
-                    <View style={styles.emptyContainer}>
-                        <Ionicons name="document-text-outline" size={48} color={themeColors.textSecondary} />
-                        <Text style={styles.emptyTitle}>No Register Data Yet</Text>
-                        <Text style={styles.emptyText}>
-                            Upload your first Z-report or shift report to see your store metrics.
-                        </Text>
-                        <TouchableOpacity
-                            style={styles.uploadButton}
-                            onPress={() => (navigation as any).navigate('UploadShiftReport')}
-                        >
-                            <Ionicons name="cloud-upload" size={20} color="#FFFFFF" />
-                            <Text style={styles.uploadButtonText}>Upload Shift Report</Text>
-                        </TouchableOpacity>
+                {alerts.length > 0 && (
+                    <View style={styles.alertsSection}>
+                        <Text style={styles.sectionTitle}>STORE ALERTS ({alerts.length})</Text>
+                        {alerts.map((alert) => (
+                            <View key={alert.id} style={styles.alertCard}>
+                                <View style={styles.alertHeader}>
+                                    <Ionicons
+                                        name={alert.severity === 'high' ? 'alert-circle' : 'information-circle'}
+                                        size={20}
+                                        color={alert.severity === 'high' ? colors.semantic.error : colors.semantic.warning}
+                                    />
+                                    <Text style={styles.alertTitle}>{alert.title}</Text>
+                                </View>
+                                <Text style={styles.alertMessage}>{alert.message}</Text>
+                            </View>
+                        ))}
                     </View>
                 )}
 
-                {/* Quick Actions */}
                 <Text style={styles.sectionTitle}>Quick Actions</Text>
                 <View style={styles.actionsGrid}>
-                    <TouchableOpacity style={styles.actionCard}>
-                        <Ionicons name="add-circle" size={28} color={colors.primary[500]} />
-                        <Text style={styles.actionText}>Add Shift</Text>
+                    <TouchableOpacity
+                        style={styles.actionCard}
+                        onPress={() => (navigation as any).navigate('Reports')}
+                    >
+                        <Ionicons name="document-text" size={28} color={colors.primary[500]} />
+                        <Text style={styles.actionText}>View Reports</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                         style={styles.actionCard}
                         onPress={() => (navigation as any).navigate('UploadShiftReport')}
                     >
-                        <Ionicons name="camera" size={28} color={colors.primary[500]} />
-                        <Text style={styles.actionText}>📤 Upload</Text>
-                        <Text style={styles.actionSubtext}>Shift Report</Text>
+                        <Ionicons name="cloud-upload" size={28} color={colors.primary[500]} />
+                        <Text style={styles.actionText}>Upload</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.actionCard}>
-                        <Ionicons name="document-text" size={28} color={colors.primary[500]} />
-                        <Text style={styles.actionText}>Reports</Text>
+                    <TouchableOpacity
+                        style={styles.actionCard}
+                        onPress={() => (navigation as any).navigate('Chat')}
+                    >
+                        <Ionicons name="chatbubbles" size={28} color={colors.primary[500]} />
+                        <Text style={styles.actionText}>Ask AI</Text>
                     </TouchableOpacity>
-                </View>
-
-                {/* Insights Preview */}
-                <Text style={styles.sectionTitle}>Quick Insights</Text>
-                <View style={styles.card}>
-                    <View style={styles.insightRow}>
-                        <Ionicons name="bulb" size={20} color={colors.semantic.warning} />
-                        <Text style={styles.insightText}>
-                            View detailed analytics in the Insights tab to track performance trends.
-                        </Text>
-                    </View>
                 </View>
             </ScrollView>
         </View>
     );
 }
 
-const createStyles = (themeColors: ReturnType<typeof getThemeColors>) => StyleSheet.create({
-    container: {
-        flex: 1,
-        backgroundColor: themeColors.background,
-    },
-    loadingContainer: {
-        flex: 1,
-        backgroundColor: themeColors.background,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    header: {
-        padding: 20,
-        paddingTop: 60,
-        backgroundColor: themeColors.surface,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    storeName: {
-        fontSize: 28,
-        fontWeight: 'bold',
-        color: themeColors.textPrimary,
-    },
-    date: {
-        fontSize: 14,
-        color: themeColors.textSecondary,
-        marginTop: 4,
-    },
-    headerActions: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    headerButton: {
-        padding: 8,
-        marginLeft: 4,
-    },
-    content: {
-        padding: 16,
-        paddingBottom: 32,
-    },
-
-    // Data Source Indicator
-    sourceContainer: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 16,
-    },
-    sourceBadge: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 12,
-        paddingVertical: 6,
-        borderRadius: 20,
-        backgroundColor: themeColors.card,
-    },
-    sourceBadgeToday: {
-        backgroundColor: colors.semantic.success + '15',
-    },
-    sourceBadgeLastShift: {
-        backgroundColor: colors.primary[500] + '15',
-    },
-    sourceBadgeEmpty: {
-        backgroundColor: themeColors.card,
-    },
-    sourceLabel: {
-        fontSize: 13,
-        fontWeight: '600',
-        marginLeft: 6,
-        color: themeColors.textSecondary,
-    },
-    sourceLabelToday: {
-        color: colors.semantic.success,
-    },
-    sourceLabelLastShift: {
-        color: colors.primary[500],
-    },
-    lastUpdated: {
-        fontSize: 11,
-        color: themeColors.textSecondary,
-    },
-
-    // Metrics
-    metricGrid: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 12,
-    },
-    card: {
-        backgroundColor: themeColors.card,
-        borderRadius: 16,
-        padding: 16,
-        borderWidth: 1,
-        borderColor: themeColors.border,
-    },
-    metricCard: {
-        width: '48%',
-    },
-    alertCard: {
-        borderColor: colors.semantic.error + '50',
-        backgroundColor: colors.semantic.error + '10',
-    },
-    metricHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 8,
-    },
-    metricLabel: {
-        fontSize: 13,
-        color: themeColors.textSecondary,
-        marginLeft: 6,
-    },
-    metricValue: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: colors.primary[500],
-        fontFamily: 'monospace',
-    },
-    metricSubtext: {
-        fontSize: 11,
-        color: themeColors.textSecondary,
-        marginTop: 4,
-    },
-
-    // Empty State
-    emptyContainer: {
-        alignItems: 'center',
-        paddingVertical: 32,
-        paddingHorizontal: 24,
-        backgroundColor: themeColors.card,
-        borderRadius: 16,
-        marginBottom: 16,
-    },
-    emptyTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: themeColors.textPrimary,
-        marginTop: 16,
-    },
-    emptyText: {
-        fontSize: 14,
-        color: themeColors.textSecondary,
-        textAlign: 'center',
-        marginTop: 8,
-        lineHeight: 20,
-    },
-    uploadButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: colors.primary[500],
-        paddingHorizontal: 20,
-        paddingVertical: 12,
-        borderRadius: 12,
-        marginTop: 20,
-    },
-    uploadButtonText: {
-        color: '#FFFFFF',
-        fontWeight: '600',
-        marginLeft: 8,
-    },
-
-    // Quick Actions
-    sectionTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: themeColors.textPrimary,
-        marginBottom: 12,
-        marginTop: 20,
-    },
-    actionsGrid: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-    },
-    actionCard: {
-        backgroundColor: themeColors.card,
-        borderRadius: 16,
-        padding: 16,
-        alignItems: 'center',
-        width: '31%',
-        borderWidth: 1,
-        borderColor: themeColors.border,
-    },
-    actionText: {
-        color: themeColors.textPrimary,
-        fontSize: 12,
-        marginTop: 8,
-        textAlign: 'center',
-    },
-    actionSubtext: {
-        color: themeColors.textSecondary,
-        fontSize: 10,
-        marginTop: 2,
-        textAlign: 'center',
-    },
-    insightRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-    },
-    insightText: {
-        color: themeColors.textPrimary,
-        marginLeft: 12,
-        flex: 1,
-        lineHeight: 22,
-    },
-});
+const createStyles = (themeColors: ReturnType<typeof getThemeColors>) =>
+    StyleSheet.create({
+        container: {
+            flex: 1,
+            backgroundColor: themeColors.background,
+        },
+        centerContent: {
+            justifyContent: 'center',
+            alignItems: 'center',
+        },
+        header: {
+            paddingTop: 60,
+            paddingBottom: 16,
+            paddingHorizontal: 20,
+            backgroundColor: themeColors.surface,
+            borderBottomWidth: 1,
+            borderBottomColor: themeColors.border,
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+        },
+        storeName: {
+            fontSize: 24,
+            fontWeight: 'bold',
+            color: themeColors.textPrimary,
+        },
+        date: {
+            fontSize: 13,
+            color: themeColors.textSecondary,
+            marginTop: 2,
+        },
+        headerActions: {
+            flexDirection: 'row',
+            alignItems: 'center',
+        },
+        headerButton: {
+            padding: 8,
+            marginLeft: 4,
+        },
+        content: {
+            flex: 1,
+            padding: 16,
+        },
+        sourceContainer: {
+            marginBottom: 16,
+        },
+        sourceBadge: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            borderRadius: 20,
+            alignSelf: 'flex-start',
+        },
+        sourceBadgeToday: {
+            backgroundColor: colors.semantic.success + '15',
+        },
+        sourceBadgeLastShift: {
+            backgroundColor: colors.primary[500] + '15',
+        },
+        sourceLabel: {
+            fontSize: 13,
+            fontWeight: '600',
+            marginLeft: 6,
+        },
+        sourceLabelToday: {
+            color: colors.semantic.success,
+        },
+        sourceLabelLastShift: {
+            color: colors.primary[500],
+        },
+        monthlySalesBadge: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: colors.primary[500] + '15',
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            borderRadius: 20,
+            marginLeft: 8,
+        },
+        monthlySalesLabel: {
+            fontSize: 11,
+            fontWeight: '600',
+            color: colors.primary[500],
+            marginLeft: 4,
+        },
+        monthlySalesValue: {
+            fontSize: 13,
+            fontWeight: '700',
+            color: colors.primary[500],
+            marginLeft: 6,
+        },
+        metricGrid: {
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            marginBottom: 12,
+        },
+        metricCard: {
+            flex: 1,
+            backgroundColor: themeColors.card,
+            borderRadius: 12,
+            padding: 16,
+            marginHorizontal: 4,
+            borderWidth: 1,
+            borderColor: themeColors.border,
+        },
+        metricHeader: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            marginBottom: 8,
+        },
+        metricLabel: {
+            fontSize: 13,
+            color: themeColors.textSecondary,
+            marginLeft: 6,
+            fontWeight: '500',
+        },
+        metricValue: {
+            fontSize: 24,
+            fontWeight: 'bold',
+            color: themeColors.textPrimary,
+            marginBottom: 4,
+        },
+        metricChange: {
+            flexDirection: 'row',
+            alignItems: 'center',
+        },
+        changeText: {
+            fontSize: 12,
+            marginLeft: 4,
+            fontWeight: '600',
+        },
+        varianceCard: {
+            backgroundColor: themeColors.card,
+            borderRadius: 12,
+            padding: 16,
+            borderWidth: 1,
+            marginBottom: 16,
+        },
+        varianceOver: {
+            borderColor: colors.semantic.success + '50',
+            backgroundColor: colors.semantic.success + '10',
+        },
+        varianceShort: {
+            borderColor: colors.semantic.error + '50',
+            backgroundColor: colors.semantic.error + '10',
+        },
+        varianceNeutral: {
+            borderColor: themeColors.border,
+        },
+        varianceHeader: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            marginBottom: 8,
+        },
+        varianceLabel: {
+            fontSize: 14,
+            fontWeight: '600',
+            color: themeColors.textPrimary,
+            marginLeft: 8,
+        },
+        varianceValue: {
+            fontSize: 20,
+            fontWeight: 'bold',
+        },
+        alertsSection: {
+            marginBottom: 16,
+        },
+        sectionTitle: {
+            fontSize: 18,
+            fontWeight: 'bold',
+            color: themeColors.textPrimary,
+            marginBottom: 12,
+            marginTop: 8,
+        },
+        alertCard: {
+            backgroundColor: themeColors.card,
+            borderRadius: 12,
+            padding: 16,
+            marginBottom: 8,
+            borderWidth: 1,
+            borderColor: themeColors.border,
+        },
+        alertHeader: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            marginBottom: 8,
+        },
+        alertTitle: {
+            fontSize: 15,
+            fontWeight: '600',
+            color: themeColors.textPrimary,
+            marginLeft: 8,
+            flex: 1,
+        },
+        alertMessage: {
+            fontSize: 14,
+            color: themeColors.textSecondary,
+            lineHeight: 20,
+        },
+        actionsGrid: {
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            marginBottom: 20,
+        },
+        actionCard: {
+            backgroundColor: themeColors.card,
+            borderRadius: 12,
+            padding: 16,
+            alignItems: 'center',
+            width: '31%',
+            borderWidth: 1,
+            borderColor: themeColors.border,
+        },
+        actionText: {
+            color: themeColors.textPrimary,
+            fontSize: 12,
+            marginTop: 8,
+            textAlign: 'center',
+            fontWeight: '500',
+        },
+        emptyState: {
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: 40,
+        },
+        emptyTitle: {
+            fontSize: 20,
+            fontWeight: 'bold',
+            color: themeColors.textPrimary,
+            marginTop: 16,
+            marginBottom: 8,
+        },
+        emptyText: {
+            fontSize: 15,
+            color: themeColors.textSecondary,
+            textAlign: 'center',
+            marginBottom: 24,
+            lineHeight: 22,
+        },
+        uploadButton: {
+            backgroundColor: colors.primary[500],
+            borderRadius: 12,
+            paddingVertical: 14,
+            paddingHorizontal: 24,
+            flexDirection: 'row',
+            alignItems: 'center',
+        },
+        uploadButtonText: {
+            color: '#FFFFFF',
+            fontSize: 16,
+            fontWeight: '600',
+            marginLeft: 8,
+        },
+    });

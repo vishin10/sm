@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { ActivityIndicator, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +17,8 @@ import DrawerContent from '../components/DrawerContent';
 import { colors } from '../theme/colors';
 import { useThemeStore } from '../store/themeStore';
 import { getThemeColors } from '../theme/colors';
+import { useStoreStore } from '../store/storeStore';
+import { storesApi } from '../api/stores';
 
 const Tab = createBottomTabNavigator();
 const Drawer = createDrawerNavigator();
@@ -69,6 +72,29 @@ function TabNavigator() {
 export default function MainNavigator() {
     const { theme } = useThemeStore();
     const themeColors = getThemeColors(theme);
+    const { loadSelectedStore, isLoading } = useStoreStore();
+
+    useEffect(() => {
+        const initStores = async () => {
+            try {
+                console.log('Fetching stores...');
+                const response = await storesApi.getStores();
+                console.log('Stores fetched:', response);
+                await loadSelectedStore(response.stores);
+            } catch (error) {
+                console.error('Failed to load stores:', error);
+            }
+        };
+        initStores();
+    }, []);
+
+    if (isLoading) {
+        return (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: themeColors.background }}>
+                <ActivityIndicator size="large" color={colors.primary[500]} />
+            </View>
+        );
+    }
 
     return (
         <Drawer.Navigator

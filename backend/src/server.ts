@@ -2,9 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
-// import { rateLimit } from 'express-validator'; // Removed invalid import 
-// Correct package in package.json is rate-limiter-flexible, but often just express-rate-limit is used. 
-// User request said "rate-limiter-flexible". I will use that or just correct imports.
 import { errorHandler } from './middleware/errorHandler';
 // Routes
 import authRoutes from './routes/auth.routes';
@@ -17,6 +14,7 @@ import reportRoutes from './routes/report.routes';
 import shiftAnalysisRoutes from './routes/shiftAnalysis.routes';
 import shiftReportRoutes from './routes/shiftReport.routes';
 import chatRoutes from './routes/chat.routes';
+import dashboardRoutes from './routes/dashboard.routes';
 import { startConversationCleanupJob } from './jobs/conversationCleanup';
 
 dotenv.config();
@@ -30,11 +28,8 @@ app.use(cors({
     origin: process.env.CORS_ORIGIN?.split(',') || '*',
     credentials: true
 }));
-app.use(express.json({ limit: '50mb' })); // Increased limit for image uploads
+app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-// Rate limiting (Basic placeholder, will implement robust one in middleware)
-// app.use(rateLimiter); 
 
 // Routes
 app.use('/auth', authRoutes);
@@ -47,6 +42,7 @@ app.use('/reports', reportRoutes);
 app.use('/analyze-shift-report', shiftAnalysisRoutes);
 app.use('/shift-reports', shiftReportRoutes);
 app.use('/chat', chatRoutes);
+app.use('/dashboard', dashboardRoutes);
 
 // Base route
 app.get('/', (req, res) => {
@@ -58,7 +54,5 @@ app.use(errorHandler);
 
 export const server = app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-
-    // Start background jobs
     startConversationCleanupJob();
 });

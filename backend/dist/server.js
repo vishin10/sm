@@ -9,9 +9,6 @@ const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
 const dotenv_1 = __importDefault(require("dotenv"));
-// import { rateLimit } from 'express-validator'; // Removed invalid import 
-// Correct package in package.json is rate-limiter-flexible, but often just express-rate-limit is used. 
-// User request said "rate-limiter-flexible". I will use that or just correct imports.
 const errorHandler_1 = require("./middleware/errorHandler");
 // Routes
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
@@ -24,6 +21,7 @@ const report_routes_1 = __importDefault(require("./routes/report.routes"));
 const shiftAnalysis_routes_1 = __importDefault(require("./routes/shiftAnalysis.routes"));
 const shiftReport_routes_1 = __importDefault(require("./routes/shiftReport.routes"));
 const chat_routes_1 = __importDefault(require("./routes/chat.routes"));
+const dashboard_routes_1 = __importDefault(require("./routes/dashboard.routes"));
 const conversationCleanup_1 = require("./jobs/conversationCleanup");
 dotenv_1.default.config();
 const app = (0, express_1.default)();
@@ -34,10 +32,8 @@ app.use((0, cors_1.default)({
     origin: ((_a = process.env.CORS_ORIGIN) === null || _a === void 0 ? void 0 : _a.split(',')) || '*',
     credentials: true
 }));
-app.use(express_1.default.json({ limit: '50mb' })); // Increased limit for image uploads
+app.use(express_1.default.json({ limit: '50mb' }));
 app.use(express_1.default.urlencoded({ extended: true, limit: '50mb' }));
-// Rate limiting (Basic placeholder, will implement robust one in middleware)
-// app.use(rateLimiter); 
 // Routes
 app.use('/auth', auth_routes_1.default);
 app.use('/stores', store_routes_1.default);
@@ -49,6 +45,7 @@ app.use('/reports', report_routes_1.default);
 app.use('/analyze-shift-report', shiftAnalysis_routes_1.default);
 app.use('/shift-reports', shiftReport_routes_1.default);
 app.use('/chat', chat_routes_1.default);
+app.use('/dashboard', dashboard_routes_1.default);
 // Base route
 app.get('/', (req, res) => {
     res.json({ message: 'Silent Manager API is running' });
@@ -57,6 +54,5 @@ app.get('/', (req, res) => {
 app.use(errorHandler_1.errorHandler);
 exports.server = app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
-    // Start background jobs
     (0, conversationCleanup_1.startConversationCleanupJob)();
 });

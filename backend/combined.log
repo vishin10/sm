@@ -3066,3 +3066,7 @@
 {"level":"info","message":"Calling OpenAI...","timestamp":"2026-01-06T00:02:32.909Z"}
 {"level":"info","message":"OpenAI response received","timestamp":"2026-01-06T00:02:35.635Z"}
 {"level":"info","message":"Conversation cleanup job scheduled (daily at 2am)","timestamp":"2026-01-07T01:52:44.928Z"}
+{"level":"info","message":"Conversation cleanup job scheduled (daily at 2am)","timestamp":"2026-01-07T02:22:13.265Z"}
+{"level":"info","message":"Chat request from user cmjwzq6e300018vp92g4uouhc: \"Show me my latest report summary\"","timestamp":"2026-01-07T02:42:15.823Z"}
+{"level":"info","message":"General chat query for store cmjxfotmo000b8vp9tsl8ukjk: \"Show me my latest report summary\"","timestamp":"2026-01-07T02:42:17.345Z"}
+{"day":null,"hasDateReference":false,"level":"info","message":"Partial date extraction:","month":null,"queryType":"latest","shiftNumber":null,"timeReference":null,"timestamp":"2026-01-07T02:42:19.284Z","year":null}
