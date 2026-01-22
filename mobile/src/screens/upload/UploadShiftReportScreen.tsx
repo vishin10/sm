@@ -19,7 +19,10 @@ import { useStoreStore } from '../../store/storeStore';
 import { API_URL } from '../../constants/config';
 import { useAuthStore } from '../../store/authStore';
 import { compressImage, createUploadFormData } from '../../utils/imageUtils';
+import CropReceiptModal from '../../components/upload/CropReceiptModal';
 import axios from 'axios';
+import { useFocusEffect } from '@react-navigation/native';
+
 
 type ProgressState = 'idle' | 'compressing' | 'uploading' | 'analyzing' | 'finalizing';
 
@@ -44,6 +47,9 @@ export default function UploadShiftReportScreen() {
         fileName?: string;
     } | null>(null);
     const [progress, setProgress] = useState<ProgressState>('idle');
+    const [showCropModal, setShowCropModal] = useState(false);
+    const [originalUri, setOriginalUri] = useState<string | null>(null);
+    const [isCropped, setIsCropped] = useState(false);
 
     const handleGoBack = () => {
         (navigation as any).goBack();
@@ -65,12 +71,15 @@ export default function UploadShiftReportScreen() {
         try {
             const result = await ImagePicker.launchCameraAsync({
                 mediaTypes: ['images'],
-                quality: 0.8,
+                quality: 0.9,
             });
 
             if (!result.canceled && result.assets[0]) {
+                const uri = result.assets[0].uri;
+                setOriginalUri(uri);
+                setIsCropped(false);
                 setSelectedFile({
-                    uri: result.assets[0].uri,
+                    uri,
                     mimeType: 'image/jpeg',
                     fileName: 'shift_report_photo.jpg',
                 });
@@ -85,12 +94,15 @@ export default function UploadShiftReportScreen() {
         try {
             const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ['images'],
-                quality: 0.8,
+                quality: 0.9,
             });
 
             if (!result.canceled && result.assets[0]) {
+                const uri = result.assets[0].uri;
+                setOriginalUri(uri);
+                setIsCropped(false);
                 setSelectedFile({
-                    uri: result.assets[0].uri,
+                    uri,
                     mimeType: result.assets[0].mimeType || 'image/jpeg',
                     fileName: result.assets[0].fileName || 'shift_report.jpg',
                 });
@@ -109,6 +121,8 @@ export default function UploadShiftReportScreen() {
             });
 
             if (!result.canceled && result.assets[0]) {
+                setOriginalUri(null);
+                setIsCropped(false);
                 setSelectedFile({
                     uri: result.assets[0].uri,
                     mimeType: result.assets[0].mimeType || 'application/pdf',
@@ -121,6 +135,22 @@ export default function UploadShiftReportScreen() {
         }
     };
 
+    const handleOpenCrop = () => {
+        if (originalUri) {
+            setShowCropModal(true);
+        }
+    };
+
+    const handleCropComplete = (croppedUri: string) => {
+        setSelectedFile(prev => prev ? { ...prev, uri: croppedUri } : null);
+        setIsCropped(true);
+        setShowCropModal(false);
+    };
+
+    const handleCancelCrop = () => {
+        setShowCropModal(false);
+    };
+
     const analyzeShift = async () => {
         if (!selectedFile) {
             Alert.alert('No File', 'Please select or take a photo of your shift report first.');
@@ -131,14 +161,12 @@ export default function UploadShiftReportScreen() {
             let uploadUri = selectedFile.uri;
             const isImage = selectedFile.mimeType?.startsWith('image/');
 
-            // Step 1: Compress if it's an image
             if (isImage) {
                 setProgress('compressing');
-                const compressed = await compressImage(selectedFile.uri);
+                const compressed = await compressImage(uploadUri);
                 uploadUri = compressed.uri;
             }
 
-            // Step 2: Upload
             setProgress('uploading');
             const formData = await createUploadFormData(
                 uploadUri,
@@ -146,7 +174,6 @@ export default function UploadShiftReportScreen() {
                 selectedFile.mimeType || 'image/jpeg'
             );
 
-            // Add storeId to FormData
             if (selectedStore?.id) {
                 formData.append('storeId', selectedStore.id);
             }
@@ -160,7 +187,7 @@ export default function UploadShiftReportScreen() {
                         Authorization: `Bearer ${token}`,
                         'Content-Type': 'multipart/form-data',
                     },
-                    timeout: 120000, // 2 minute timeout for full extraction
+                    timeout: 120000,
                 }
             );
 
@@ -169,7 +196,6 @@ export default function UploadShiftReportScreen() {
             if (response.data.success) {
                 (navigation as any).navigate('ShiftInsights', {
                     reportId: response.data.reportId,
-                    extract: response.data.extract,
                     method: response.data.method,
                     ocrScore: response.data.ocrScore,
                     status: response.data.status,
@@ -195,10 +221,23 @@ export default function UploadShiftReportScreen() {
 
     const clearSelection = () => {
         setSelectedFile(null);
+        setOriginalUri(null);
+        setIsCropped(false);
     };
 
     const isProcessing = progress !== 'idle';
+    const isImage = selectedFile?.mimeType?.startsWith('image/');
+    const canCrop = isImage && originalUri;
     const styles = createStyles(themeColors);
+
+    useFocusEffect(
+        React.useCallback(() => {
+            // Clear state when screen is focused
+            setSelectedFile(null);
+            setOriginalUri(null);
+            setIsCropped(false);
+        }, [])
+    );
 
     return (
         <View style={styles.container}>
@@ -215,7 +254,6 @@ export default function UploadShiftReportScreen() {
             </View>
 
             <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                {/* Upload Options */}
                 {!selectedFile && (
                     <View style={styles.uploadSection}>
                         <Text style={styles.description}>
@@ -257,24 +295,52 @@ export default function UploadShiftReportScreen() {
                     </View>
                 )}
 
-                {/* File Preview */}
                 {selectedFile && (
                     <View style={styles.previewSection}>
                         <View style={styles.previewHeader}>
-                            <Text style={styles.previewTitle}>Selected File</Text>
+                            <View>
+                                <Text style={styles.previewTitle}>
+                                    {isCropped ? '✂️ Cropped Image' : 'Selected Image'}
+                                </Text>
+                                {isCropped && (
+                                    <Text style={styles.previewSubtitle}>Ready for analysis</Text>
+                                )}
+                            </View>
                             {!isProcessing && (
-                                <TouchableOpacity onPress={clearSelection}>
-                                    <Ionicons name="close-circle" size={24} color={themeColors.textSecondary} />
-                                </TouchableOpacity>
+                                <View style={styles.actionButtons}>
+                                    {canCrop && (
+                                        <TouchableOpacity onPress={handleOpenCrop} style={styles.actionButton}>
+                                            <Ionicons name="crop" size={18} color={colors.primary[500]} />
+                                            <Text style={styles.actionButtonText}>Crop</Text>
+                                        </TouchableOpacity>
+                                    )}
+                                    <TouchableOpacity onPress={clearSelection} style={styles.actionButtonSecondary}>
+                                        <Ionicons name="refresh" size={18} color={themeColors.textSecondary} />
+                                        <Text style={styles.actionButtonTextSecondary}>Re-select</Text>
+                                    </TouchableOpacity>
+                                </View>
                             )}
                         </View>
 
-                        {selectedFile.mimeType?.startsWith('image/') ? (
-                            <Image source={{ uri: selectedFile.uri }} style={styles.previewImage} resizeMode="contain" />
+                        {isImage ? (
+                            <Image
+                                source={{ uri: selectedFile.uri }}
+                                style={styles.previewImage}
+                                resizeMode="contain"
+                            />
                         ) : (
                             <View style={styles.pdfPreview}>
                                 <Ionicons name="document-text" size={64} color={colors.primary[500]} />
                                 <Text style={styles.pdfFileName}>{selectedFile.fileName}</Text>
+                            </View>
+                        )}
+
+                        {canCrop && !isCropped && (
+                            <View style={styles.cropHint}>
+                                <Ionicons name="information-circle" size={16} color={colors.primary[500]} />
+                                <Text style={styles.cropHintText}>
+                                    Tap "Crop" to remove background for better accuracy
+                                </Text>
                             </View>
                         )}
 
@@ -304,6 +370,15 @@ export default function UploadShiftReportScreen() {
                     </View>
                 )}
             </ScrollView>
+
+            {originalUri && (
+                <CropReceiptModal
+                    visible={showCropModal}
+                    imageUri={originalUri}
+                    onCancel={handleCancelCrop}
+                    onCropComplete={handleCropComplete}
+                />
+            )}
         </View>
     );
 }
@@ -390,7 +465,7 @@ const createStyles = (themeColors: ReturnType<typeof getThemeColors>) => StyleSh
     previewHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         marginBottom: 16,
     },
     previewTitle: {
@@ -398,24 +473,76 @@ const createStyles = (themeColors: ReturnType<typeof getThemeColors>) => StyleSh
         fontWeight: '600',
         color: themeColors.textPrimary,
     },
+    previewSubtitle: {
+        fontSize: 12,
+        color: colors.semantic.success,
+        marginTop: 2,
+    },
+    actionButtons: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    actionButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        backgroundColor: colors.primary[500] + '15',
+        borderRadius: 20,
+        gap: 4,
+    },
+    actionButtonText: {
+        fontSize: 13,
+        color: colors.primary[500],
+        fontWeight: '600',
+    },
+    actionButtonSecondary: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        backgroundColor: themeColors.background,
+        borderRadius: 20,
+        gap: 4,
+    },
+    actionButtonTextSecondary: {
+        fontSize: 13,
+        color: themeColors.textSecondary,
+        fontWeight: '500',
+    },
     previewImage: {
         width: '100%',
         height: 300,
         borderRadius: 12,
         backgroundColor: themeColors.background,
-        marginBottom: 20,
+        marginBottom: 16,
     },
     pdfPreview: {
         alignItems: 'center',
         padding: 40,
         backgroundColor: themeColors.background,
         borderRadius: 12,
-        marginBottom: 20,
+        marginBottom: 16,
     },
     pdfFileName: {
         fontSize: 14,
         color: themeColors.textSecondary,
         marginTop: 12,
+    },
+    cropHint: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.primary[500] + '10',
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderRadius: 10,
+        marginBottom: 16,
+        gap: 8,
+    },
+    cropHintText: {
+        flex: 1,
+        fontSize: 13,
+        color: colors.primary[500],
     },
     analyzeButton: {
         flexDirection: 'row',

@@ -7,6 +7,8 @@ import {
     TouchableOpacity,
     ActivityIndicator,
     RefreshControl,
+    Alert,
+    Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
@@ -42,6 +44,11 @@ export default function ReportsListScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
+    // Selection mode state
+    const [selectionMode, setSelectionMode] = useState(false);
+    const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+    const [deleting, setDeleting] = useState(false);
+
     const fetchReports = async () => {
         if (!selectedStore?.id) {
             setError('No store selected');
@@ -72,6 +79,9 @@ export default function ReportsListScreen() {
     useFocusEffect(
         useCallback(() => {
             fetchReports();
+            // Reset selection mode when screen gets focus
+            setSelectionMode(false);
+            setSelectedIds(new Set());
         }, [selectedStore?.id])
     );
 
@@ -81,26 +91,134 @@ export default function ReportsListScreen() {
     };
 
     const handleGoBack = () => {
-        (navigation as any).navigate('Tabs');
+        if (selectionMode) {
+            // Exit selection mode
+            setSelectionMode(false);
+            setSelectedIds(new Set());
+        } else {
+            (navigation as any).navigate('Tabs');
+        }
     };
 
-    const openReport = async (reportId: string) => {
-        try {
-            const response = await axios.get(
-                `${API_URL}/shift-reports/${reportId}`,
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
+    const openReport = (reportId: string) => {
+        if (selectionMode) {
+            // Toggle selection
+            toggleSelection(reportId);
+        } else {
+            (navigation as any).navigate('ShiftInsights', {
+                reportId
+            });
+        }
+    };
 
-            if (response.data.success) {
-                (navigation as any).navigate('ShiftInsights', {
-                    reportId,
-                    extract: response.data.report,
-                    method: response.data.report.extractionMethod,
-                    savedAt: response.data.report.createdAt,
-                });
+    // Toggle report selection
+    const toggleSelection = (reportId: string) => {
+        setSelectedIds(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(reportId)) {
+                newSet.delete(reportId);
+            } else {
+                newSet.add(reportId);
             }
-        } catch (err) {
-            console.error('Failed to fetch report details:', err);
+            // Exit selection mode if nothing selected
+            if (newSet.size === 0) {
+                setSelectionMode(false);
+            }
+            return newSet;
+        });
+    };
+
+    // Long press to enter selection mode
+    const handleLongPress = (reportId: string) => {
+        if (!selectionMode) {
+            setSelectionMode(true);
+            setSelectedIds(new Set([reportId]));
+        }
+    };
+
+    // Delete single report
+    const handleDeleteSingle = (reportId: string) => {
+        const message = 'This report will be permanently deleted. This action cannot be undone.';
+
+        if (Platform.OS === 'web') {
+            // Web: use window.confirm
+            if (window.confirm(`⚠️ Delete Report\n\n${message}`)) {
+                performDelete([reportId]);
+            }
+        } else {
+            // Native: use Alert.alert
+            Alert.alert(
+                '⚠️ Delete Report',
+                message,
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                        text: 'Delete',
+                        style: 'destructive',
+                        onPress: () => performDelete([reportId])
+                    }
+                ]
+            );
+        }
+    };
+
+    // Delete selected reports
+    const handleDeleteSelected = () => {
+        const count = selectedIds.size;
+        const message = `${count} report${count > 1 ? 's' : ''} will be permanently deleted. This action cannot be undone.`;
+
+        if (Platform.OS === 'web') {
+            // Web: use window.confirm
+            if (window.confirm(`⚠️ Delete Reports\n\n${message}`)) {
+                performDelete(Array.from(selectedIds));
+            }
+        } else {
+            // Native: use Alert.alert
+            Alert.alert(
+                '⚠️ Delete Reports',
+                message,
+                [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                        text: 'Delete',
+                        style: 'destructive',
+                        onPress: () => performDelete(Array.from(selectedIds))
+                    }
+                ]
+            );
+        }
+    };
+
+    // Perform the actual delete
+    const performDelete = async (ids: string[]) => {
+        if (!selectedStore?.id) return;
+
+        setDeleting(true);
+        try {
+            if (ids.length === 1) {
+                // Single delete
+                await axios.delete(
+                    `${API_URL}/shift-reports/${ids[0]}?storeId=${selectedStore.id}`,
+                    { headers: { Authorization: `Bearer ${token}` } }
+                );
+            } else {
+                // Bulk delete
+                await axios.post(
+                    `${API_URL}/shift-reports/bulk-delete`,
+                    { reportIds: ids, storeId: selectedStore.id },
+                    { headers: { Authorization: `Bearer ${token}` } }
+                );
+            }
+
+            // Remove deleted reports from state
+            setReports(prev => prev.filter(r => !ids.includes(r.id)));
+            setSelectionMode(false);
+            setSelectedIds(new Set());
+        } catch (err: any) {
+            console.error('Delete failed:', err);
+            Alert.alert('Error', 'Failed to delete report(s). Please try again.');
+        } finally {
+            setDeleting(false);
         }
     };
 
@@ -138,60 +256,125 @@ export default function ReportsListScreen() {
 
     const styles = createStyles(themeColors);
 
-    const renderReport = ({ item }: { item: ShiftReportListItem }) => (
-        <TouchableOpacity style={styles.reportCard} onPress={() => openReport(item.id)}>
-            <View style={styles.reportHeader}>
-                <Text style={styles.reportDate}>{formatDate(item.reportDate)}</Text>
-                <Text style={styles.methodBadge}>{getMethodIcon(item.extractionMethod)}</Text>
-            </View>
+    const renderReport = ({ item }: { item: ShiftReportListItem }) => {
+        const isSelected = selectedIds.has(item.id);
+        const showSingleDelete = selectedIds.size === 1 && isSelected;
 
-            <View style={styles.reportMetrics}>
-                <View style={styles.metric}>
-                    <Text style={styles.metricLabel}>Total</Text>
-                    <Text style={styles.metricValue}>{formatCurrency(item.grossSales)}</Text>
-                </View>
-                <View style={styles.metric}>
-                    <Text style={styles.metricLabel}>Fuel</Text>
-                    <Text style={styles.metricValue}>{formatCurrency(item.fuelSales)}</Text>
-                </View>
-                <View style={styles.metric}>
-                    <Text style={styles.metricLabel}>Inside</Text>
-                    <Text style={styles.metricValue}>{formatCurrency(item.insideSales)}</Text>
-                </View>
-            </View>
+        return (
+            <TouchableOpacity
+                style={[
+                    styles.reportCard,
+                    isSelected && styles.reportCardSelected
+                ]}
+                onPress={() => openReport(item.id)}
+                onLongPress={() => handleLongPress(item.id)}
+                delayLongPress={500}
+            >
+                {/* Selection checkbox */}
+                {selectionMode && (
+                    <TouchableOpacity
+                        style={styles.checkbox}
+                        onPress={() => toggleSelection(item.id)}
+                    >
+                        <Ionicons
+                            name={isSelected ? "checkbox" : "square-outline"}
+                            size={24}
+                            color={isSelected ? colors.primary[500] : themeColors.textSecondary}
+                        />
+                    </TouchableOpacity>
+                )}
 
-            {item.cashVariance !== undefined && item.cashVariance !== null && item.cashVariance !== 0 && (
-                <View style={[
-                    styles.varianceBadge,
-                    item.cashVariance < 0 ? styles.varianceNegative : styles.variancePositive
-                ]}>
-                    <Text style={styles.varianceText}>
-                        {item.cashVariance > 0 ? '+' : ''}{formatCurrency(item.cashVariance)} variance
-                    </Text>
-                </View>
-            )}
+                <View style={[styles.reportContent, selectionMode && styles.reportContentWithCheckbox]}>
+                    <View style={styles.reportHeader}>
+                        <Text style={styles.reportDate}>{formatDate(item.reportDate)}</Text>
+                        <View style={styles.headerRight}>
+                            <Text style={styles.methodBadge}>{getMethodIcon(item.extractionMethod)}</Text>
+                            {/* Single delete button - shows when exactly 1 item selected */}
+                            {showSingleDelete && (
+                                <TouchableOpacity
+                                    style={styles.deleteButtonSingle}
+                                    onPress={() => handleDeleteSingle(item.id)}
+                                >
+                                    <Ionicons name="trash-outline" size={20} color={colors.semantic.error} />
+                                </TouchableOpacity>
+                            )}
+                        </View>
+                    </View>
 
-            <Ionicons
-                name="chevron-forward"
-                size={20}
-                color={themeColors.textSecondary}
-                style={styles.chevron}
-            />
-        </TouchableOpacity>
-    );
+                    <View style={styles.reportMetrics}>
+                        <View style={styles.metric}>
+                            <Text style={styles.metricLabel}>Total</Text>
+                            <Text style={styles.metricValue}>{formatCurrency(item.grossSales)}</Text>
+                        </View>
+                        <View style={styles.metric}>
+                            <Text style={styles.metricLabel}>Fuel</Text>
+                            <Text style={styles.metricValue}>{formatCurrency(item.fuelSales)}</Text>
+                        </View>
+                        <View style={styles.metric}>
+                            <Text style={styles.metricLabel}>Inside</Text>
+                            <Text style={styles.metricValue}>{formatCurrency(item.insideSales)}</Text>
+                        </View>
+                    </View>
+
+                    {item.cashVariance !== undefined && item.cashVariance !== null && item.cashVariance !== 0 && (
+                        <View style={[
+                            styles.varianceBadge,
+                            item.cashVariance < 0 ? styles.varianceNegative : styles.variancePositive
+                        ]}>
+                            <Text style={styles.varianceText}>
+                                {item.cashVariance > 0 ? '+' : ''}{formatCurrency(item.cashVariance)} variance
+                            </Text>
+                        </View>
+                    )}
+                </View>
+
+                {!selectionMode && (
+                    <Ionicons
+                        name="chevron-forward"
+                        size={20}
+                        color={themeColors.textSecondary}
+                        style={styles.chevron}
+                    />
+                )}
+            </TouchableOpacity>
+        );
+    };
 
     return (
         <View style={styles.container}>
             <View style={styles.header}>
                 <TouchableOpacity style={styles.backButton} onPress={handleGoBack}>
-                    <Ionicons name="arrow-back" size={24} color={themeColors.textPrimary} />
+                    <Ionicons
+                        name={selectionMode ? "close" : "arrow-back"}
+                        size={24}
+                        color={themeColors.textPrimary}
+                    />
                 </TouchableOpacity>
-                <View>
-                    <Text style={styles.headerTitle}>Shift Reports</Text>
-                    <Text style={styles.headerSubtitle}>
-                        {selectedStore?.name || 'All Stores'}
+                <View style={styles.headerCenter}>
+                    <Text style={styles.headerTitle}>
+                        {selectionMode ? `${selectedIds.size} Selected` : 'Shift Reports'}
                     </Text>
+                    {!selectionMode && (
+                        <Text style={styles.headerSubtitle}>
+                            {selectedStore?.name || 'All Stores'}
+                        </Text>
+                    )}
                 </View>
+
+                {/* Multi-select delete button - shows in header when 2+ selected */}
+                {selectionMode && selectedIds.size > 1 && (
+                    <TouchableOpacity
+                        style={styles.deleteButtonHeader}
+                        onPress={handleDeleteSelected}
+                        disabled={deleting}
+                    >
+                        {deleting ? (
+                            <ActivityIndicator size="small" color={colors.semantic.error} />
+                        ) : (
+                            <Ionicons name="trash" size={24} color={colors.semantic.error} />
+                        )}
+                    </TouchableOpacity>
+                )}
             </View>
 
             {loading ? (
@@ -237,6 +420,13 @@ export default function ReportsListScreen() {
                     }
                 />
             )}
+
+            {/* Selection mode hint */}
+            {!selectionMode && reports.length > 0 && (
+                <View style={styles.hintContainer}>
+                    <Text style={styles.hintText}>Long press to select multiple reports</Text>
+                </View>
+            )}
         </View>
     );
 }
@@ -258,6 +448,9 @@ const createStyles = (themeColors: ReturnType<typeof getThemeColors>) => StyleSh
         marginRight: 12,
         padding: 4,
     },
+    headerCenter: {
+        flex: 1,
+    },
     headerTitle: {
         fontSize: 24,
         fontWeight: 'bold',
@@ -267,6 +460,10 @@ const createStyles = (themeColors: ReturnType<typeof getThemeColors>) => StyleSh
         fontSize: 13,
         color: themeColors.textSecondary,
         marginTop: 2,
+    },
+    deleteButtonHeader: {
+        padding: 8,
+        marginLeft: 8,
     },
     centerContainer: {
         flex: 1,
@@ -323,6 +520,7 @@ const createStyles = (themeColors: ReturnType<typeof getThemeColors>) => StyleSh
     },
     listContent: {
         padding: 16,
+        paddingBottom: 80,
     },
     reportCard: {
         backgroundColor: themeColors.card,
@@ -331,13 +529,33 @@ const createStyles = (themeColors: ReturnType<typeof getThemeColors>) => StyleSh
         marginBottom: 12,
         borderWidth: 1,
         borderColor: themeColors.border,
-        position: 'relative',
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    reportCardSelected: {
+        borderColor: colors.primary[500],
+        borderWidth: 2,
+        backgroundColor: colors.primary[500] + '10',
+    },
+    checkbox: {
+        marginRight: 12,
+    },
+    reportContent: {
+        flex: 1,
+    },
+    reportContentWithCheckbox: {
+        marginLeft: 0,
     },
     reportHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
         marginBottom: 12,
+    },
+    headerRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
     },
     reportDate: {
         fontSize: 16,
@@ -346,6 +564,9 @@ const createStyles = (themeColors: ReturnType<typeof getThemeColors>) => StyleSh
     },
     methodBadge: {
         fontSize: 16,
+    },
+    deleteButtonSingle: {
+        padding: 4,
     },
     reportMetrics: {
         flexDirection: 'row',
@@ -382,8 +603,22 @@ const createStyles = (themeColors: ReturnType<typeof getThemeColors>) => StyleSh
         fontWeight: '500',
     },
     chevron: {
+        marginLeft: 8,
+    },
+    hintContainer: {
         position: 'absolute',
-        right: 16,
-        top: '50%',
+        bottom: 20,
+        left: 20,
+        right: 20,
+        alignItems: 'center',
+    },
+    hintText: {
+        fontSize: 12,
+        color: themeColors.textSecondary,
+        backgroundColor: themeColors.surface,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
+        overflow: 'hidden',
     },
 });

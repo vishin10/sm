@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'">
+    <title>Silent Manager Agent - Setup</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            padding: 40px;
+            width: 100%;
+            max-width: 420px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .logo {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .logo h1 {
+            font-size: 24px;
+            font-weight: 600;
+            background: linear-gradient(90deg, #00d4ff, #00ff88);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .logo p {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        
+        .step {
+            display: none;
+        }
+        
+        .step.active {
+            display: block;
+        }
+        
+        .step-title {
+            font-size: 18px;
+            font-weight: 500;
+            margin-bottom: 20px;
+            color: rgba(255, 255, 255, 0.9);
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        label {
+            display: block;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 8px;
+        }
+        
+        input[type="text"],
+        input[type="password"] {
+            width: 100%;
+            padding: 14px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            font-size: 16px;
+            transition: all 0.3s;
+        }
+        
+        input:focus {
+            outline: none;
+            border-color: #00d4ff;
+            box-shadow: 0 0 0 3px rgba(0, 212, 255, 0.2);
+        }
+        
+        .pin-input {
+            text-align: center;
+            font-size: 32px;
+            letter-spacing: 12px;
+            font-weight: 600;
+        }
+        
+        .folder-input {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .folder-input input {
+            flex: 1;
+        }
+        
+        .folder-input button {
+            padding: 14px 20px;
+            border: none;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .folder-input button:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(90deg, #00d4ff, #00ff88);
+            color: #1a1a2e;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0, 212, 255, 0.4);
+        }
+        
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .error {
+            background: rgba(255, 77, 77, 0.2);
+            border: 1px solid rgba(255, 77, 77, 0.5);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #ff6b6b;
+        }
+        
+        .success {
+            background: rgba(0, 255, 136, 0.2);
+            border: 1px solid rgba(0, 255, 136, 0.5);
+            border-radius: 8px;
+            padding: 20px;
+            text-align: center;
+        }
+        
+        .success h2 {
+            color: #00ff88;
+            margin-bottom: 10px;
+        }
+        
+        .success p {
+            color: rgba(255, 255, 255, 0.8);
+            font-size: 14px;
+        }
+        
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .server-url {
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        .server-url a {
+            color: #00d4ff;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">
+            <h1>Silent Manager Agent</h1>
+            <p>Auto-upload shift reports from your POS</p>
+        </div>
+        
+        <!-- Step 1: Enter PIN -->
+        <div id="step1" class="step active">
+            <h3 class="step-title">Enter Setup PIN</h3>
+            <p style="color: rgba(255,255,255,0.6); font-size: 14px; margin-bottom: 20px;">
+                Get the 6-digit PIN from the Silent Manager mobile app:<br>
+                Settings → Back Office Agent → Generate PIN
+            </p>
+            
+            <div id="error1" class="error" style="display: none;"></div>
+            
+            <div class="form-group">
+                <label>6-Digit PIN</label>
+                <input type="text" id="pin" class="pin-input" maxlength="6" placeholder="000000" autocomplete="off">
+            </div>
+            
+            <div class="form-group">
+                <label>Computer Name</label>
+                <input type="text" id="deviceName" placeholder="e.g., Store 1 Back Office" value="">
+            </div>
+            
+            <button id="btnConnect" class="btn btn-primary" disabled>
+                Connect
+            </button>
+            
+            <div class="server-url">
+                Server: <span id="serverUrl">http://localhost:3000</span>
+                <a id="changeServer">(change)</a>
+            </div>
+        </div>
+        
+        <!-- Step 2: Select Folder -->
+        <div id="step2" class="step">
+            <h3 class="step-title">Select Watch Folder</h3>
+            <p style="color: rgba(255,255,255,0.6); font-size: 14px; margin-bottom: 20px;">
+                Choose the folder where your POS saves shift reports.
+            </p>
+            
+            <div id="error2" class="error" style="display: none;"></div>
+            
+            <div class="form-group">
+                <label>Store</label>
+                <input type="text" id="storeName" readonly style="background: rgba(0,212,255,0.1);">
+            </div>
+            
+            <div class="form-group">
+                <label>Watch Folder</label>
+                <div class="folder-input">
+                    <input type="text" id="watchPath" placeholder="C:\POS\Reports" readonly>
+                    <button id="btnBrowse">Browse</button>
+                </div>
+            </div>
+            
+            <button id="btnSave" class="btn btn-primary" disabled>
+                Start Monitoring
+            </button>
+        </div>
+        
+        <!-- Step 3: Success -->
+        <div id="step3" class="step">
+            <div class="success">
+                <h2>✓ Connected!</h2>
+                <p>The agent is now monitoring for shift reports.</p>
+                <p style="margin-top: 15px;">You can close this window.<br>The agent runs in your system tray.</p>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // State
+        let baseUrl = 'http://localhost:3000';
+        let registrationData = null;
+        
+        // Elements
+        const pinInput = document.getElementById('pin');
+        const deviceNameInput = document.getElementById('deviceName');
+        const btnConnect = document.getElementById('btnConnect');
+        const watchPathInput = document.getElementById('watchPath');
+        const storeNameInput = document.getElementById('storeName');
+        const btnBrowse = document.getElementById('btnBrowse');
+        const btnSave = document.getElementById('btnSave');
+        
+        // Set default device name
+        deviceNameInput.value = 'Back Office Computer';
+        
+        // PIN input validation
+        pinInput.addEventListener('input', (e) => {
+            e.target.value = e.target.value.replace(/\D/g, '').substring(0, 6);
+            btnConnect.disabled = e.target.value.length !== 6 || !deviceNameInput.value.trim();
+        });
+        
+        deviceNameInput.addEventListener('input', () => {
+            btnConnect.disabled = pinInput.value.length !== 6 || !deviceNameInput.value.trim();
+        });
+        
+        // Connect button
+        btnConnect.addEventListener('click', async () => {
+            const pin = pinInput.value;
+            const deviceName = deviceNameInput.value.trim();
+            
+            btnConnect.disabled = true;
+            btnConnect.innerHTML = '<div class="loading"><div class="spinner"></div><span>Connecting...</span></div>';
+            document.getElementById('error1').style.display = 'none';
+            
+            try {
+                const result = await window.electronAPI.register(pin, deviceName, baseUrl);
+                
+                if (result.success) {
+                    registrationData = result;
+                    storeNameInput.value = result.storeName;
+                    showStep(2);
+                } else {
+                    showError('error1', result.error || 'Invalid PIN');
+                }
+            } catch (error) {
+                showError('error1', error.message || 'Connection failed');
+            }
+            
+            btnConnect.disabled = false;
+            btnConnect.textContent = 'Connect';
+        });
+        
+        // Browse button
+        btnBrowse.addEventListener('click', async () => {
+            const path = await window.electronAPI.selectFolder();
+            if (path) {
+                watchPathInput.value = path;
+                btnSave.disabled = false;
+            }
+        });
+        
+        // Save button
+        btnSave.addEventListener('click', async () => {
+            if (!registrationData || !watchPathInput.value) return;
+            
+            btnSave.disabled = true;
+            btnSave.innerHTML = '<div class="loading"><div class="spinner"></div><span>Setting up...</span></div>';
+            document.getElementById('error2').style.display = 'none';
+            
+            try {
+                const result = await window.electronAPI.saveStore(
+                    registrationData.storeId,
+                    registrationData.storeName,
+                    registrationData.apiKey,
+                    watchPathInput.value
+                );
+                
+                if (result.success) {
+                    showStep(3);
+                    // Close window after 3 seconds
+                    setTimeout(() => window.close(), 3000);
+                } else {
+                    showError('error2', result.error || 'Setup failed');
+                }
+            } catch (error) {
+                showError('error2', error.message || 'Setup failed');
+            }
+            
+            btnSave.disabled = false;
+            btnSave.textContent = 'Start Monitoring';
+        });
+        
+        // Change server URL
+        document.getElementById('changeServer').addEventListener('click', () => {
+            const newUrl = prompt('Enter server URL:', baseUrl);
+            if (newUrl) {
+                baseUrl = newUrl;
+                document.getElementById('serverUrl').textContent = newUrl;
+            }
+        });
+        
+        // Helper functions
+        function showStep(step) {
+            document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+            document.getElementById('step' + step).classList.add('active');
+        }
+        
+        function showError(elementId, message) {
+            const el = document.getElementById(elementId);
+            el.textContent = message;
+            el.style.display = 'block';
+        }
+    </script>
+</body>
+</html>

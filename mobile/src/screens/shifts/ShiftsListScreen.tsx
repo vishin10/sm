@@ -72,15 +72,8 @@ export default function ShiftsListScreen({ navigation: stackNav }: any) {
         return (
             <TouchableOpacity
                 style={styles.card}
-                onPress={() => stackNav.navigate('ShiftDetail', {
-                    shift: {
-                        ...item,
-                        date: formatDate(item.startAt),
-                        register: item.registerId || 'N/A',
-                        total: formatCurrency(item.totalSales),
-                        variance: `${isPositive ? '+' : ''}${formatCurrency(item.cashVariance)}`,
-                        isPositive,
-                    }
+                onPress={() => stackNav.navigate('ShiftInsights', {
+                    reportId: item.id
                 })}
             >
                 <View style={styles.cardHeader}>

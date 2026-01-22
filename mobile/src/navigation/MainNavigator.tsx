@@ -13,6 +13,7 @@ import ManageStoresScreen from '../screens/stores/ManageStoresScreen';
 import UploadShiftReportScreen from '../screens/upload/UploadShiftReportScreen';
 import ShiftInsightsScreen from '../screens/upload/ShiftInsightsScreen';
 import ReportsListScreen from '../screens/reports/ReportsListScreen';
+import AgentSetupScreen from '../screens/agent/AgentSetupScreen';
 import DrawerContent from '../components/DrawerContent';
 import { colors } from '../theme/colors';
 import { useThemeStore } from '../store/themeStore';
@@ -120,6 +121,7 @@ export default function MainNavigator() {
             <Drawer.Screen name="ManageStores" component={ManageStoresScreen} />
             <Drawer.Screen name="UploadShiftReport" component={UploadShiftReportScreen} />
             <Drawer.Screen name="ShiftInsights" component={ShiftInsightsScreen} />
+            <Drawer.Screen name="AgentSetup" component={AgentSetupScreen} />
         </Drawer.Navigator>
     );
 }

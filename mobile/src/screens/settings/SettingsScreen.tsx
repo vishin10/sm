@@ -101,6 +101,14 @@ export default function SettingsScreen() {
 
                         <View style={styles.divider} />
 
+                        <TouchableOpacity style={styles.menuItem} onPress={() => (navigation as any).navigate('AgentSetup')}>
+                            <Ionicons name="desktop-outline" size={22} color={themeColors.textPrimary} />
+                            <Text style={styles.menuText}>Back Office Agent</Text>
+                            <Ionicons name="chevron-forward" size={20} color={themeColors.textSecondary} />
+                        </TouchableOpacity>
+
+                        <View style={styles.divider} />
+
                         <TouchableOpacity style={styles.menuItem}>
                             <Ionicons name="cloud-upload-outline" size={22} color={themeColors.textPrimary} />
                             <Text style={styles.menuText}>Data Import</Text>

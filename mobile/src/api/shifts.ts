@@ -23,7 +23,97 @@ export interface Shift {
 export interface DepartmentSale {
     id: string;
     departmentName: string;
+    quantity?: number;
     amount: string;
+}
+
+export interface ItemSale {
+    id: string;
+    itemName: string;
+    sku?: string;
+    quantity?: number;
+    amount: string;
+}
+
+export interface ReportException {
+    id: string;
+    type: string;
+    count: number;
+    amount?: string;
+}
+
+// Full shift report with all extraction data
+export interface ShiftReportFull {
+    id: string;
+    reportDate: string;
+    registerId?: string;
+    operatorId?: string;
+    tillId?: string;
+    shiftStart?: string;
+    shiftEnd?: string;
+    printedAt?: string;
+
+    // Sales Summary
+    grossSales?: string;
+    netSales?: string;
+    refunds?: string;
+    discounts?: string;
+    taxTotal?: string;
+    totalTransactions?: number;
+
+    // Fuel
+    fuelSales?: string;
+    fuelGross?: string;
+    fuelGallons?: number;
+
+    // Inside Sales
+    insideSales?: string;
+    merchandiseSales?: string;
+    prepaysInitiated?: string;
+    prepaysPumped?: string;
+
+    // Balances / Cash Drawer
+    beginningBalance?: string;
+    endingBalance?: string;
+    closingAccountability?: string;
+    cashierCounted?: string;
+    cashVariance?: string;
+
+    // Tenders
+    cashCount?: number;
+    cashAmount?: string;
+    creditCount?: number;
+    creditAmount?: string;
+    debitCount?: number;
+    debitAmount?: string;
+    checkCount?: number;
+    checkAmount?: string;
+    ebtCount?: number;
+    ebtAmount?: string;
+    otherTenderCount?: number;
+    otherTenderAmount?: string;
+    totalTenders?: string;
+
+    // Safe Activity
+    safeDropCount?: number;
+    safeDropAmount?: string;
+    safeLoanCount?: number;
+    safeLoanAmount?: string;
+    paidInCount?: number;
+    paidInAmount?: string;
+    paidOutCount?: number;
+    paidOutAmount?: string;
+
+    // Related data arrays
+    departments: DepartmentSale[];
+    items: ItemSale[];
+    exceptions: ReportException[];
+
+    // Metadata
+    store?: { name: string };
+    extractionMethod?: string;
+    extractionConfidence?: number;
+    rawText?: string;
 }
 
 export interface ShiftsResponse {
@@ -46,6 +136,15 @@ export const shiftsApi = {
     async getShiftById(id: string): Promise<Shift> {
         const response = await apiClient.get(`/shifts/${id}`);
         return response.data;
+    },
+
+    /**
+     * Get full shift report with all extracted data
+     * (departments, items, exceptions, tenders, etc.)
+     */
+    async getShiftReportById(id: string): Promise<ShiftReportFull> {
+        const response = await apiClient.get(`/shift-reports/${id}`);
+        return response.data.report;
     },
 
     async deleteShift(id: string): Promise<void> {

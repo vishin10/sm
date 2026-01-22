@@ -25,11 +25,14 @@ model Store {
   deviceKey    String        @unique
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
-  shifts        Shift[]
-  alerts        Alert[]
-  insights      Insight[]
-  shiftReports  ShiftReport[]
-  conversations Conversation[]
+  shifts         Shift[]
+  alerts         Alert[]
+  insights       Insight[]
+  shiftReports   ShiftReport[]
+  conversations  Conversation[]
+  agentApiKeys   AgentApiKey[]
+  agentUploads   AgentUpload[]
+  agentSetupPins AgentSetupPin[]
 
   @@index([userId])
 }
@@ -178,6 +181,7 @@ model ShiftReport {
   departments           ShiftReportDepartment[]
   items                 ShiftReportItem[]
   exceptions            ShiftReportException[]
+  agentUpload           AgentUpload?
 
   @@index([storeId])
   @@index([reportDate])
@@ -261,4 +265,61 @@ model ConversationMessage {
   createdAt       DateTime     @default(now())
   
   @@index([conversationId, createdAt])
+}
+
+// ============================================
+// AGENT MODELS (Back-Office Agent)
+// ============================================
+
+model AgentApiKey {
+  id          String    @id @default(cuid())
+  storeId     String
+  keyHash     String    // bcrypt hash of API key
+  keyPrefix   String    // first 8 chars for display (sk_agent_abc12...)
+  deviceName  String    // e.g., "Store 1 POS Computer"
+  lastSeenAt  DateTime?
+  status      String    @default("ACTIVE") // ACTIVE | REVOKED
+  createdAt   DateTime  @default(now())
+  revokedAt   DateTime?
+  
+  store       Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  
+  @@index([storeId])
+  @@index([keyHash])
+}
+
+model AgentUpload {
+  id              String       @id @default(cuid())
+  storeId         String
+  fileName        String
+  fileHash        String       // SHA-256 to detect duplicates
+  fileSize        Int
+  s3Key           String?      // S3 object key for raw XML
+  status          String       @default("PENDING") // PENDING | PROCESSING | PROCESSED | FAILED
+  error           String?      @db.Text
+  retryCount      Int          @default(0)
+  uploadedAt      DateTime     @default(now())
+  processedAt     DateTime?
+  shiftReportId   String?      @unique
+  
+  store           Store        @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  shiftReport     ShiftReport? @relation(fields: [shiftReportId], references: [id])
+  
+  @@unique([fileHash, storeId])
+  @@index([storeId, uploadedAt])
+  @@index([status])
+}
+
+model AgentSetupPin {
+  id          String   @id @default(cuid())
+  storeId     String
+  pin         String   // 6-digit PIN
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime @default(now())
+  
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  
+  @@index([pin])
+  @@index([expiresAt])
 }

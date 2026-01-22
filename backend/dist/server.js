@@ -22,6 +22,7 @@ const shiftAnalysis_routes_1 = __importDefault(require("./routes/shiftAnalysis.r
 const shiftReport_routes_1 = __importDefault(require("./routes/shiftReport.routes"));
 const chat_routes_1 = __importDefault(require("./routes/chat.routes"));
 const dashboard_routes_1 = __importDefault(require("./routes/dashboard.routes"));
+const agent_routes_1 = __importDefault(require("./routes/agent.routes"));
 const conversationCleanup_1 = require("./jobs/conversationCleanup");
 dotenv_1.default.config();
 const app = (0, express_1.default)();
@@ -46,6 +47,7 @@ app.use('/analyze-shift-report', shiftAnalysis_routes_1.default);
 app.use('/shift-reports', shiftReport_routes_1.default);
 app.use('/chat', chat_routes_1.default);
 app.use('/dashboard', dashboard_routes_1.default);
+app.use('/agent', agent_routes_1.default);
 // Base route
 app.get('/', (req, res) => {
     res.json({ message: 'Silent Manager API is running' });

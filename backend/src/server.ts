@@ -15,6 +15,7 @@ import shiftAnalysisRoutes from './routes/shiftAnalysis.routes';
 import shiftReportRoutes from './routes/shiftReport.routes';
 import chatRoutes from './routes/chat.routes';
 import dashboardRoutes from './routes/dashboard.routes';
+import agentRoutes from './routes/agent.routes';
 import { startConversationCleanupJob } from './jobs/conversationCleanup';
 
 dotenv.config();
@@ -43,6 +44,7 @@ app.use('/analyze-shift-report', shiftAnalysisRoutes);
 app.use('/shift-reports', shiftReportRoutes);
 app.use('/chat', chatRoutes);
 app.use('/dashboard', dashboardRoutes);
+app.use('/agent', agentRoutes);
 
 // Base route
 app.get('/', (req, res) => {

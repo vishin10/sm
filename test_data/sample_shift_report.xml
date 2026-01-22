@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ShiftReport>
+  <Header>
+    <RegisterID>REG001</RegisterID>
+    <OperatorID>EMP123</OperatorID>
+    <PeriodBeginDate>2026-01-21T06:00:00</PeriodBeginDate>
+    <PeriodEndDate>2026-01-21T14:00:00</PeriodEndDate>
+  </Header>
+  <Totals>
+    <TotalSales>1250.50</TotalSales>
+    <FuelSales>800.00</FuelSales>
+    <InsideSales>450.50</InsideSales>
+    <Refunds>15.00</Refunds>
+    <VoidCount>2</VoidCount>
+    <Discounts>10.00</Discounts>
+    <Tax>35.50</Tax>
+    <CustomerCount>145</CustomerCount>
+    <CashVariance>-2.50</CashVariance>
+  </Totals>
+  <DepartmentSales>
+    <Department>
+      <Name>Cigarettes</Name>
+      <Amount>200.00</Amount>
+    </Department>
+    <Department>
+      <Name>Beverages</Name>
+      <Amount>150.50</Amount>
+    </Department>
+    <Department>
+      <Name>Food</Name>
+      <Amount>100.00</Amount>
+    </Department>
+  </DepartmentSales>
+</ShiftReport>

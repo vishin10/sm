@@ -13,8 +13,47 @@ exports.ShiftReportController = void 0;
 const ShiftAnalysisService_1 = require("../services/ShiftAnalysisService");
 const ShiftReportStorage_1 = require("../services/ShiftReportStorage");
 const ShiftReportChatService_1 = require("../services/ShiftReportChatService");
+const EdgeDetectionService_1 = require("../services/EdgeDetectionService");
 const logger_1 = require("../utils/logger");
 class ShiftReportController {
+    /**
+     * POST /shift-reports/auto-crop
+     * Auto-detect receipt edges and crop image
+     */
+    static autoCrop(req, res, next) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                if (!req.file) {
+                    return res.status(400).json({
+                        error: { code: 'MISSING_FILE', message: 'No file uploaded' }
+                    });
+                }
+                logger_1.Logger.info(`Auto-cropping image: ${req.file.originalname}`);
+                const result = yield EdgeDetectionService_1.EdgeDetectionService.autoCropReceipt(req.file.buffer);
+                if (!result.success || !result.croppedImage) {
+                    return res.status(200).json({
+                        success: false,
+                        confidence: result.confidence,
+                        error: result.error,
+                        message: 'Auto-crop failed, please crop manually',
+                    });
+                }
+                // Return cropped image as base64
+                const base64Image = `data:${req.file.mimetype};base64,${result.croppedImage.toString('base64')}`;
+                logger_1.Logger.info(`Auto-crop successful with confidence ${result.confidence.toFixed(2)}`);
+                res.json({
+                    success: true,
+                    confidence: result.confidence,
+                    croppedImage: base64Image,
+                    coordinates: result.coordinates,
+                });
+            }
+            catch (error) {
+                logger_1.Logger.error('Auto-crop endpoint error', error);
+                next(error);
+            }
+        });
+    }
     /**
      * POST /shift-reports/upload
      * Upload, extract, and save a shift report with universal AI extraction
@@ -264,6 +303,65 @@ class ShiftReportController {
                 }
                 const data = yield ShiftReportStorage_1.ShiftReportStorage.getFuelVsInside(storeId, new Date(startDate), new Date(endDate));
                 res.json({ success: true, data });
+            }
+            catch (error) {
+                next(error);
+            }
+        });
+    }
+    /**
+     * DELETE /shift-reports/:id
+     * Delete a single shift report
+     */
+    static delete(req, res, next) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { id } = req.params;
+                const { storeId } = req.query;
+                if (!storeId) {
+                    return res.status(400).json({
+                        error: { code: 'MISSING_STORE', message: 'Store ID is required' }
+                    });
+                }
+                const deleted = yield ShiftReportStorage_1.ShiftReportStorage.delete(id, storeId);
+                if (!deleted) {
+                    return res.status(404).json({
+                        error: { code: 'NOT_FOUND', message: 'Shift report not found' }
+                    });
+                }
+                logger_1.Logger.info(`Deleted shift report ${id} for store ${storeId}`);
+                res.json({ success: true, message: 'Report deleted successfully' });
+            }
+            catch (error) {
+                next(error);
+            }
+        });
+    }
+    /**
+     * POST /shift-reports/bulk-delete
+     * Delete multiple shift reports at once
+     */
+    static bulkDelete(req, res, next) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const { reportIds, storeId } = req.body;
+                if (!storeId) {
+                    return res.status(400).json({
+                        error: { code: 'MISSING_STORE', message: 'Store ID is required' }
+                    });
+                }
+                if (!reportIds || !Array.isArray(reportIds) || reportIds.length === 0) {
+                    return res.status(400).json({
+                        error: { code: 'MISSING_IDS', message: 'Report IDs array is required' }
+                    });
+                }
+                const deletedCount = yield ShiftReportStorage_1.ShiftReportStorage.deleteMany(reportIds, storeId);
+                logger_1.Logger.info(`Bulk deleted ${deletedCount} reports for store ${storeId}`);
+                res.json({
+                    success: true,
+                    deletedCount,
+                    message: `${deletedCount} report(s) deleted successfully`
+                });
             }
             catch (error) {
                 next(error);

@@ -1,8 +1,11 @@
+// ShiftAnalysisService.ts
+
 import OpenAI from 'openai';
 import { Logger } from '../utils/logger';
 import { ShiftReportExtract, ShiftReportExtractSchema } from '../types/shiftReportExtract.types';
 import { OCRService } from './OCRService';
 import { QualityScorer } from './QualityScorer';
+import { EdgeDetectionService } from './EdgeDetectionService';
 
 // Helper: Convert null to undefined for Zod
 function nullToUndefined(obj: any): any {
@@ -21,200 +24,127 @@ export interface AnalysisResult {
     extract: ShiftReportExtract;
     method: 'openai_vision' | 'openai_text';
     ocrScore: number;
-    rawExtraction: any; // Store EVERYTHING AI extracted
+    rawExtraction: any;
 }
 
-/**
- * Universal AI-powered shift report analyzer
- * No hardcoded patterns - AI extracts everything automatically
- */
 export class ShiftAnalysisService {
     private static openai = new OpenAI({
         apiKey: process.env.OPENAI_API_KEY,
     });
 
-    /**
-     * Universal extraction prompt - AI finds EVERYTHING
-     */
-    private static readonly UNIVERSAL_EXTRACTION_PROMPT = `You are analyzing a gas station/convenience store shift report receipt.
+    private static readonly UNIVERSAL_EXTRACTION_PROMPT = `
+You are an expert OCR system for gas station shift reports.
+Your job is to extract *ONLY* the following explicit high-confidence fields.
+Do NOT calculate totals. Do NOT infer missing values.
+If a field is not cleanly printed on the receipt, return null.
 
-Your job: Extract EVERY piece of data visible in this receipt into structured JSON.
+### EXTRACTION TARGETS:
+1. **Store Info**: Register ID (from header/footer)
+2. **Dates**: Report Date, Shift Start/End
+3. **Financials**:
+   - Total Sales (or Gross Sales)
+   - Tax Amount
+   - Fuel Sales (if separate line exists)
+4. **Cash/Balancing**:
+   - Cashier Counted Cash (Input Amount)
+   - Over/Short Amount (Cash Variance)
 
-CRITICAL RULES:
-1. Extract EVERYTHING you can see - don't skip anything
-2. If a section exists but you don't have a field for it, create a new field
-3. Create arrays for repeating data (departments, items, tenders, etc.)
-4. Use descriptive field names based on what you see (e.g., "cigarette_packs", "candy_sales")
-5. Include confidence scores for each section (0-1)
-6. All monetary values must be numbers, not strings
+### RULES:
+1. **Output Format**: Valid JSON only.
+2. **Precision**: Exact numbers as printed.
+3. **Nulls**: Use null if not found.
+4. **No Math**: Do not sum up tenders or departments.
 
-REQUIRED STRUCTURE (but add more fields as needed):
+### JSON SCHEMA:
 {
+  "rawText": "string",
   "storeInfo": {
-    "name": "string or null",
-    "address": "string or null",
-    "phone": "string or null",
-    "registerId": "string or null",
-    "operatorId": "string or null",
-    "tillId": "string or null",
-    "reportDate": "YYYY-MM-DD or null",
-    "shiftStart": "ISO datetime or null",
-    "shiftEnd": "ISO datetime or null",
-    "reportPrintedAt": "ISO datetime or null"
+    "registerId": "string",
+    "reportDate": "YYYY-MM-DD",
+    "shiftStart": "ISO string",
+    "shiftEnd": "ISO string"
   },
-  
   "financialSummary": {
-    "totalSales": number or null,
-    "grossSales": number or null,
-    "netSales": number or null,
-    "tax": number or null,
-    "refunds": number or null,
-    "discounts": number or null,
-    "totalTransactions": number or null,
-    "totalCustomers": number or null,
-    "confidence": 0-1
+    "totalSales": number,
+    "tax": number,
+    "confidence": number
   },
-  
-  "cashManagement": {
-    "beginningBalance": number or null,
-    "endingBalance": number or null,
-    "expectedCash": number or null,
-    "actualCash": number or null,
-    "cashVariance": number or null,
-    "overShort": number or null,
-    "confidence": 0-1
-  },
-  
   "fuelData": {
-    "fuelSales": number or null,
-    "fuelGross": number or null,
-    "fuelGallons": number or null,
-    "fuelCustomers": number or null,
-    "fuelTransactions": number or null,
-    "confidence": 0-1
+    "fuelSales": number,
+    "confidence": number
   },
-  
-  "insideStoreData": {
-    "insideSales": number or null,
-    "merchandiseSales": number or null,
-    "prepayInitiated": number or null,
-    "prepayPumped": number or null,
-    "prepayNotPumped": number or null,
-    "confidence": 0-1
+  "cashManagement": {
+    "cashierCountedCash": number,
+    "cashierShortAmount": number, // Over/Short or Closing Availability
+    "confidence": number
   },
-  
-  "paymentMethods": [
-    {
-      "type": "cash|credit|debit|check|ebt|other",
-      "name": "exact name from receipt",
-      "count": number or null,
-      "amount": number,
-      "confidence": 0-1
-    }
-  ],
-  
-  "safeActivity": {
-    "drops": [
-      { "type": "string", "count": number or null, "amount": number, "description": "string" }
-    ],
-    "loans": [
-      { "type": "string", "count": number or null, "amount": number, "description": "string" }
-    ],
-    "paidIn": { "count": number or null, "amount": number or null },
-    "paidOut": { "count": number or null, "amount": number or null },
-    "totalDrops": number or null,
-    "totalLoans": number or null,
-
-    "cashierSafeDrops": { "cash": number or null, "total": number or null },
-    "systemSafeDrops": { "cash": number or null, "credit": number or null, "debit": number or null, "total": number or null },
-
-    "paymentsIntoTill": number or null,
-    "paymentsOutOfTill": number or null,
-
-    "confidence": 0-1
-  },
-  
-  "departmentBreakdown": [
-    {
-      "departmentName": "exact name from receipt",
-      "quantity": number or null,
-      "amount": number,
-      "percentage": number or null,
-      "confidence": 0-1
-    }
-  ],
-  
-  "itemizedSales": [
-    {
-      "itemName": "exact name from receipt",
-      "sku": "string or null",
-      "quantity": number or null,
-      "unitPrice": number or null,
-      "amount": number,
-      "department": "string or null",
-      "confidence": 0-1
-    }
-  ],
-  
-  "exceptions": [
-    {
-      "type": "void|no_sale|refund|discount|drive_off|other",
-      "description": "exact text from receipt",
-      "count": number or null,
-      "amount": number or null
-    }
-  ],
-  
-  "additionalData": {
-    // PUT ANY OTHER DATA YOU FIND HERE
-  },
-  
-  "rawSections": {
-    // Store sections you found but couldn't categorize
-  },
-  
   "extractionMetadata": {
-    "confidence": 0-1,
-    "missingFields": ["list of expected fields not found"],
-    "unusualFields": ["list of fields found that aren't standard"],
-    "notes": "any observations about the receipt format"
+    "confidence": number,
+    "notes": "string"
   }
 }
-
-IMPORTANT: 
-- If you see data that doesn't fit the schema above, ADD IT to "additionalData" with descriptive names
-- Extract EVERY line item in department sales, even if there are 50+ items
-- Extract EVERY payment method shown
-- Don't skip sections because they seem "extra" - capture everything
-- Use exact names from the receipt (don't normalize "Cigarettes - Packs" to just "Cigarettes")
-
-Respond ONLY with valid JSON matching this structure.`;
+`;
 
     /**
-     * Main extraction - AI handles everything
+     * Normalize ID (register/operator) from OCR/Raw Text.
+     * DISABLED: Safe drop/activity normalization (too redundant for Quick Scan).
      */
-    static async analyzeShiftReport(
-        fileBuffer: Buffer,
-        mimeType: string = 'image/jpeg'
-    ): Promise<AnalysisResult> {
-        // Skip OCR - go straight to Vision (like ChatGPT)
-        Logger.info('Using OpenAI Vision for universal extraction...');
-        return await this.analyzeWithVision(fileBuffer, mimeType);
+    private static normalizeSafeActivity(raw: any, rawText: string) {
+        if (!raw) return raw;
+        const r = raw;
+        if (!r.storeInfo) r.storeInfo = {};
+
+        // -----------------------------
+        // Register / Operator ID (Regex Override)
+        // -----------------------------
+        const registerIdMatch = rawText.match(/REGISTER\s*ID\s*[:;]?\s*([0-9]+)/i);
+        if (registerIdMatch) r.storeInfo.registerId = String(registerIdMatch[1]);
+
+        // No other normalization/inferences allowed.
+        return r;
     }
 
     /**
-     * Universal text-based extraction
+     * Validate extraction quality to catch hallucinations.
+     * Confidence is OPTIONAL (do not fail if missing).
      */
-    private static async analyzeWithText(ocrText: string): Promise<AnalysisResult> {
-        if (!process.env.OPENAI_API_KEY) {
-            throw new Error('OpenAI API Key not configured');
+    private static validateExtraction(raw: any): { valid: boolean; errors: string[] } {
+        const errors: string[] = [];
+
+        // No strict validation for Quick Scan.
+        // If confidence is brutally low, log it, but otherwise allow.
+        const overallConfidence = raw.extractionMetadata?.confidence;
+        if (overallConfidence !== undefined && overallConfidence < 0.4) {
+            Logger.warn(`Low extraction confidence: ${overallConfidence}`);
         }
+
+        return { valid: true, errors: [] };
+    }
+
+    static async analyzeShiftReport(fileBuffer: Buffer, mimeType: string = 'image/jpeg'): Promise<AnalysisResult> {
+        // 1. Vision-first for images
+        if (mimeType.startsWith('image/')) {
+            Logger.info('Image detected. Using Vision-first approach (bypassing OCR check).', { mimeType });
+            return await this.analyzeWithVision(fileBuffer, mimeType);
+        }
+
+        // 2. Fallback for non-images (e.g. PDF)
+        Logger.info('Non-image detected, attempting OCR extraction...');
+        const ocrText = await OCRService.extractTextFromImage(fileBuffer);
+        const qualityResult = QualityScorer.scoreOCROutput(ocrText);
+
+        Logger.info(`OCR quality score: ${qualityResult.score}/100`);
+        return await this.analyzeWithText(ocrText, qualityResult.score);
+    }
+
+    private static async analyzeWithText(ocrText: string, ocrScore: number): Promise<AnalysisResult> {
+        if (!process.env.OPENAI_API_KEY) throw new Error('OpenAI API Key not configured');
 
         const response = await this.openai.chat.completions.create({
             model: 'gpt-4o-mini',
             messages: [
                 { role: 'system', content: this.UNIVERSAL_EXTRACTION_PROMPT },
-                { role: 'user', content: `Extract all data from this receipt:\n\n${ocrText}` },
+                { role: 'user', content: `Extract all data from this receipt into strict JSON format:\n\n${ocrText}` },
             ],
             temperature: 0,
             response_format: { type: 'json_object' },
@@ -224,31 +154,31 @@ Respond ONLY with valid JSON matching this structure.`;
         const content = response.choices[0].message.content;
         if (!content) throw new Error('No response from OpenAI');
 
-        const rawExtraction = JSON.parse(content);
+        let rawExtraction = JSON.parse(content);
 
-        // Map to your schema (for database compatibility)
-        const extract = this.mapToSchema(rawExtraction, ocrText, 'openai_text');
+        // Backfill extractionMetadata.confidence if missing (so downstream code is stable)
+        if (!rawExtraction.extractionMetadata) rawExtraction.extractionMetadata = {};
+        if (rawExtraction.extractionMetadata.confidence == null) rawExtraction.extractionMetadata.confidence = 0.8;
 
-        return {
-            extract,
-            method: 'openai_text',
-            ocrScore: 85, // Estimated since OCR was good enough to use
-            rawExtraction, // Store EVERYTHING for chat queries
-        };
-    }
+        rawExtraction = this.normalizeSafeActivity(rawExtraction, ocrText);
 
-    /**
-     * Universal vision-based extraction
-     */
-    private static async analyzeWithVision(
-        imageBuffer: Buffer,
-        mimeType: string
-    ): Promise<AnalysisResult> {
-        if (!process.env.OPENAI_API_KEY) {
-            throw new Error('OpenAI API Key not configured');
+        const validation = this.validateExtraction(rawExtraction);
+        if (!validation.valid) {
+            Logger.error('AI extraction failed validation', { errors: validation.errors });
+            throw new Error(`Extraction quality too low: ${validation.errors.join(', ')}`);
         }
 
-        const base64 = imageBuffer.toString('base64');
+        const extract = this.mapToSchema(rawExtraction, ocrText, 'openai_text');
+
+        return { extract, method: 'openai_text', ocrScore, rawExtraction };
+    }
+
+    private static async analyzeWithVision(imageBuffer: Buffer, mimeType: string): Promise<AnalysisResult> {
+        if (!process.env.OPENAI_API_KEY) throw new Error('OpenAI API Key not configured');
+
+        // Preprocess image uses sharp (Crop -> Resize -> Enhance)
+        const processedBuffer = await EdgeDetectionService.preprocessReceiptForVision(imageBuffer, mimeType);
+        const base64 = processedBuffer.toString('base64');
 
         const response = await this.openai.chat.completions.create({
             model: 'gpt-4o',
@@ -257,10 +187,7 @@ Respond ONLY with valid JSON matching this structure.`;
                     role: 'user',
                     content: [
                         { type: 'text', text: this.UNIVERSAL_EXTRACTION_PROMPT },
-                        {
-                            type: 'image_url',
-                            image_url: { url: `data:${mimeType};base64,${base64}`, detail: 'high' },
-                        },
+                        { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}`, detail: 'high' } },
                     ],
                 },
             ],
@@ -271,89 +198,67 @@ Respond ONLY with valid JSON matching this structure.`;
         const content = response.choices[0].message.content;
         if (!content) throw new Error('No response from OpenAI');
 
-        // Clean markdown if present
         let jsonStr = content.trim();
-        if (jsonStr.startsWith('```json')) {
-            jsonStr = jsonStr.replace(/^```json\n?/, '').replace(/\n?```$/, '');
-        } else if (jsonStr.startsWith('```')) {
-            jsonStr = jsonStr.replace(/^```\n?/, '').replace(/\n?```$/, '');
+        if (jsonStr.startsWith('```json')) jsonStr = jsonStr.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+        else if (jsonStr.startsWith('```')) jsonStr = jsonStr.replace(/^```\n?/, '').replace(/\n?```$/, '');
+
+        let rawExtraction = JSON.parse(jsonStr);
+
+        // Backfill extractionMetadata.confidence if missing
+        if (!rawExtraction.extractionMetadata) rawExtraction.extractionMetadata = {};
+        if (rawExtraction.extractionMetadata.confidence == null) rawExtraction.extractionMetadata.confidence = 0.8;
+
+        // Use the AI-extracted rawText if available, otherwise we have no text for regex
+        const textForRegex = rawExtraction.rawText || '';
+
+        rawExtraction = this.normalizeSafeActivity(rawExtraction, textForRegex);
+
+        const validation = this.validateExtraction(rawExtraction);
+        if (!validation.valid) {
+            // Warn but don't fail unless critical
+            Logger.warn('AI extraction validation warnings', { errors: validation.errors });
         }
 
-        const rawExtraction = JSON.parse(jsonStr);
+        const extract = this.mapToSchema(rawExtraction, textForRegex, 'openai_vision');
 
-        // Map to your schema
-        const extract = this.mapToSchema(rawExtraction, rawExtraction.rawText || '', 'openai_vision');
-
-        // Quick debug log (optional but very helpful)
-        Logger.info(
-            `Mapped extract summary: date=${extract.storeMetadata?.reportDate} start=${extract.storeMetadata?.shiftStart} end=${extract.storeMetadata?.shiftEnd} customers=${(extract as any).salesSummary?.customersCount} tx=${extract.salesSummary?.totalTransactions}`
-        );
-
-        return {
-            extract,
-            method: 'openai_vision',
-            ocrScore: 0, // Vision doesn't use OCR
-            rawExtraction, // Store EVERYTHING
-        };
+        return { extract, method: 'openai_vision', ocrScore: 0, rawExtraction };
     }
 
     /**
      * Map AI's free-form extraction to your database schema
-     * This maintains backward compatibility with your existing DB
+     * QUICK SCAN MODE: High confidence fields only. No math.
      */
-    private static mapToSchema(
-        raw: any,
-        rawText: string,
-        extractionMethod: 'openai_vision' | 'openai_text'
-    ): ShiftReportExtract {
+    private static mapToSchema(raw: any, rawText: string, extractionMethod: 'openai_vision' | 'openai_text'): ShiftReportExtract {
         const extract: Partial<ShiftReportExtract> = {
             rawText: rawText || raw.rawText || '',
-            extractionMethod: extractionMethod === 'openai_text' ? 'openai_text' : 'openai_vision',
-            extractionConfidence: raw.extractionMetadata?.confidence || 0.8,
+            extractionMethod: extractionMethod,
+            extractionConfidence: raw.extractionMetadata?.confidence ?? 0.7,
         };
 
         // Store metadata
         if (raw.storeInfo) {
             extract.storeMetadata = {
-                storeName: raw.storeInfo.name,
-                storeAddress: raw.storeInfo.address,
                 registerId: raw.storeInfo.registerId,
-                operatorId: raw.storeInfo.operatorId,
-                tillId: raw.storeInfo.tillId,
                 reportDate: raw.storeInfo.reportDate,
                 shiftStart: raw.storeInfo.shiftStart,
                 shiftEnd: raw.storeInfo.shiftEnd,
-                reportPrintedAt: raw.storeInfo.reportPrintedAt,
-            };
+            } as any;
         }
 
         // Balances
         if (raw.cashManagement) {
             extract.balances = {
-                beginningBalance: raw.cashManagement.beginningBalance,
-                endingBalance: raw.cashManagement.endingBalance,
-                closingAccountability: raw.cashManagement.expectedCash,
-                cashierCounted: raw.cashManagement.actualCash,
-                cashVariance: raw.cashManagement.cashVariance ?? raw.cashManagement.overShort,
+                cashierCounted: raw.cashManagement.cashierCountedCash,
+                cashVariance: raw.cashManagement.cashierShortAmount,
                 confidence: raw.cashManagement.confidence || 0.7,
             };
         }
 
-        // Sales summary (IMPORTANT: do NOT mix customers into transactions)
+        // Sales summary
         if (raw.financialSummary) {
-            // NOTE: customersCount is expected to exist in your schema now
             (extract as any).salesSummary = {
-                grossSales: raw.financialSummary.grossSales ?? raw.financialSummary.totalSales,
-                netSales: raw.financialSummary.netSales,
-                refunds: raw.financialSummary.refunds,
-                discounts: raw.financialSummary.discounts,
+                grossSales: raw.financialSummary.totalSales,
                 taxTotal: raw.financialSummary.tax,
-
-                totalTransactions: raw.financialSummary.totalTransactions,
-
-                // NEW: store customers separately
-                customersCount: raw.financialSummary.totalCustomers ?? raw.financialSummary.customersCount,
-
                 confidence: raw.financialSummary.confidence || 0.8,
             };
         }
@@ -362,148 +267,12 @@ Respond ONLY with valid JSON matching this structure.`;
         if (raw.fuelData) {
             extract.fuel = {
                 fuelSales: raw.fuelData.fuelSales,
-                fuelGross: raw.fuelData.fuelGross,
-                fuelGallons: raw.fuelData.fuelGallons,
                 confidence: raw.fuelData.confidence || 0.7,
             };
         }
 
-        // Inside sales
-        if (raw.insideStoreData) {
-            extract.insideSales = {
-                insideSales: raw.insideStoreData.insideSales ?? raw.insideStoreData.merchandiseSales,
-                merchandiseSales: raw.insideStoreData.merchandiseSales,
-                prepaysInitiated: raw.insideStoreData.prepayInitiated,
-                prepaysPumped: raw.insideStoreData.prepayPumped,
-                confidence: raw.insideStoreData.confidence || 0.6,
-            };
-        }
-
-        // Tenders
-        if (raw.paymentMethods && Array.isArray(raw.paymentMethods)) {
-            extract.tenders = { confidence: 0.8 };
-
-            for (const method of raw.paymentMethods) {
-                const tender = {
-                    type: method.type,
-                    count: method.count,
-                    amount: method.amount,
-                };
-
-                switch (((method.type || '') as string).toLowerCase()) {
-                    case 'cash':
-                        extract.tenders.cash = tender;
-                        break;
-                    case 'credit':
-                        extract.tenders.credit = tender;
-                        break;
-                    case 'debit':
-                        extract.tenders.debit = tender;
-                        break;
-                    case 'check':
-                        extract.tenders.check = tender;
-                        break;
-                    case 'ebt':
-                        extract.tenders.ebt = tender;
-                        break;
-                    default:
-                        extract.tenders.other = tender;
-                }
-            }
-
-            // totalTenders if present anywhere
-            const totalT =
-                raw.financialSummary?.totalTenders ??
-                raw.cashManagement?.totalTenders ??
-                raw.additionalData?.totalTenders;
-
-            if (typeof totalT === 'number') {
-                extract.tenders.totalTenders = totalT;
-            }
-        }
-
-        // Safe activity (includes breakdown + payments in/out)
-        if (raw.safeActivity) {
-            const cashierDropCash =
-                raw.safeActivity?.cashierSafeDrops?.cash ??
-                raw.safeActivity?.cashierSafeDrops?.cashAmount;
-
-            const cashierDropTotal =
-                raw.safeActivity?.cashierSafeDrops?.total ??
-                raw.safeActivity?.cashierSafeDrops?.totalAmount;
-
-            const systemDropCash =
-                raw.safeActivity?.systemSafeDrops?.cash ??
-                raw.safeActivity?.systemSafeDrops?.cashAmount;
-
-            const systemDropCredit =
-                raw.safeActivity?.systemSafeDrops?.credit ??
-                raw.safeActivity?.systemSafeDrops?.creditAmount;
-
-            const systemDropDebit =
-                raw.safeActivity?.systemSafeDrops?.debit ??
-                raw.safeActivity?.systemSafeDrops?.debitAmount;
-
-            const systemDropTotal =
-                raw.safeActivity?.systemSafeDrops?.total ??
-                raw.safeActivity?.systemSafeDrops?.totalAmount;
-
-            // NOTE: safeDropsBreakdown + paymentsIntoTillAmount/out are expected in your schema now
-            (extract as any).safeActivity = {
-                safeDropCount: Array.isArray(raw.safeActivity.drops) ? raw.safeActivity.drops.length : undefined,
-                safeDropAmount: raw.safeActivity.totalDrops,
-                safeLoanCount: Array.isArray(raw.safeActivity.loans) ? raw.safeActivity.loans.length : undefined,
-                safeLoanAmount: raw.safeActivity.totalLoans,
-                paidInCount: raw.safeActivity.paidIn?.count,
-                paidInAmount: raw.safeActivity.paidIn?.amount,
-                paidOutCount: raw.safeActivity.paidOut?.count,
-                paidOutAmount: raw.safeActivity.paidOut?.amount,
-
-                // NEW: breakdown (cashier vs system)
-                safeDropsBreakdown: {
-                    cashier: {
-                        cashAmount: cashierDropCash,
-                        totalAmount: cashierDropTotal,
-                    },
-                    system: {
-                        cashAmount: systemDropCash,
-                        creditAmount: systemDropCredit,
-                        debitAmount: systemDropDebit,
-                        totalAmount: systemDropTotal,
-                    },
-                },
-
-                // NEW: payments in/out
-                paymentsIntoTillAmount: raw.safeActivity.paymentsIntoTillAmount ?? raw.safeActivity.paymentsIntoTill,
-                paymentsOutOfTillAmount: raw.safeActivity.paymentsOutOfTillAmount ?? raw.safeActivity.paymentsOutOfTill,
-
-                confidence: raw.safeActivity.confidence || 0.7,
-            };
-        }
-
-        // Department sales
-        extract.departmentSales = (raw.departmentBreakdown || []).map((dept: any) => ({
-            departmentName: dept.departmentName,
-            quantity: dept.quantity,
-            amount: dept.amount,
-            confidence: dept.confidence || 0.8,
-        }));
-
-        // Item sales
-        extract.itemSales = (raw.itemizedSales || []).map((item: any) => ({
-            itemName: item.itemName,
-            sku: item.sku,
-            quantity: item.quantity,
-            amount: item.amount,
-            confidence: item.confidence || 0.7,
-        }));
-
-        // Exceptions
-        extract.exceptions = (raw.exceptions || []).map((exc: any) => ({
-            type: exc.type,
-            count: exc.count,
-            amount: exc.amount,
-        }));
+        // EVERYTHING ELSE IS NULL
+        // No tenders, no safe activity, no department breakdowns.
 
         return ShiftReportExtractSchema.parse(nullToUndefined(extract));
     }

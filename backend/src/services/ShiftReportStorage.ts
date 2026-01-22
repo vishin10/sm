@@ -27,9 +27,19 @@ export class ShiftReportStorage {
         rawExtraction?: any // Complete AI extraction for chat queries
     ): Promise<SaveResult> {
         // Generate receipt hash for deduplication
+        // Generate receipt hash using unique identifiers
+        const hashData = [
+            storeId,
+            extract.storeMetadata?.reportDate || new Date().toISOString(),
+            extract.storeMetadata?.shiftStart || '',
+            extract.storeMetadata?.shiftEnd || '',
+            extract.storeMetadata?.registerId || '',
+            extract.storeMetadata?.tillId || '',
+        ].join('|');
+
         const receiptHash = crypto
             .createHash('sha256')
-            .update(extract.rawText)
+            .update(hashData)
             .digest('hex');
 
         // Check for existing
@@ -454,5 +464,71 @@ export class ShiftReportStorage {
             fuelSales: r.fuelSales?.toNumber() || 0,
             insideSales: r.insideSales?.toNumber() || 0,
         }));
+    }
+
+    /**
+     * Delete a single shift report and all related data
+     * Returns true if deleted, false if not found
+     */
+    static async delete(reportId: string, storeId: string): Promise<boolean> {
+        // Verify ownership
+        const report = await prisma.shiftReport.findFirst({
+            where: { id: reportId, storeId }
+        });
+
+        if (!report) {
+            return false;
+        }
+
+        // Delete related records first (cascade)
+        await prisma.shiftReportDepartment.deleteMany({ where: { shiftReportId: reportId } });
+        await prisma.shiftReportItem.deleteMany({ where: { shiftReportId: reportId } });
+        await prisma.shiftReportException.deleteMany({ where: { shiftReportId: reportId } });
+
+        // Delete the main report
+        await prisma.shiftReport.delete({ where: { id: reportId } });
+
+        Logger.info(`Deleted shift report: ${reportId}`);
+        return true;
+    }
+
+    /**
+     * Delete multiple shift reports (bulk delete)
+     * Returns count of deleted reports
+     */
+    static async deleteMany(reportIds: string[], storeId: string): Promise<number> {
+        // Verify ownership of all reports
+        const reports = await prisma.shiftReport.findMany({
+            where: {
+                id: { in: reportIds },
+                storeId
+            },
+            select: { id: true }
+        });
+
+        const validIds = reports.map(r => r.id);
+
+        if (validIds.length === 0) {
+            return 0;
+        }
+
+        // Delete related records first (cascade)
+        await prisma.shiftReportDepartment.deleteMany({
+            where: { shiftReportId: { in: validIds } }
+        });
+        await prisma.shiftReportItem.deleteMany({
+            where: { shiftReportId: { in: validIds } }
+        });
+        await prisma.shiftReportException.deleteMany({
+            where: { shiftReportId: { in: validIds } }
+        });
+
+        // Delete the main reports
+        const result = await prisma.shiftReport.deleteMany({
+            where: { id: { in: validIds } }
+        });
+
+        Logger.info(`Bulk deleted ${result.count} shift reports`);
+        return result.count;
     }
 }

@@ -37,8 +37,14 @@ router.get('/analytics/fuel-vs-inside', shiftReport_controller_1.ShiftReportCont
 // Chat and insights endpoints (must come before /:id)
 router.post('/:id/chat', shiftReport_controller_1.ShiftReportController.chat);
 router.get('/:id/insights', shiftReport_controller_1.ShiftReportController.getInsights);
+// Add this BEFORE other routes
+router.post('/auto-crop', upload.single('file'), shiftReport_controller_1.ShiftReportController.autoCrop);
+// Bulk delete (must come before /:id)
+router.post('/bulk-delete', shiftReport_controller_1.ShiftReportController.bulkDelete);
 // Get single report
 router.get('/:id', shiftReport_controller_1.ShiftReportController.getById);
+// Delete single report
+router.delete('/:id', shiftReport_controller_1.ShiftReportController.delete);
 // Get summary for AI chat
 router.get('/:id/summary', shiftReport_controller_1.ShiftReportController.getSummary);
 exports.default = router;
