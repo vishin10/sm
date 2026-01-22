@@ -105,15 +105,11 @@ class AgentApp {
      * Handle new file detected
      */
     async handleNewFile(event) {
-        const fs = require('fs');
-        const log = (msg) => fs.appendFileSync('c:\\dev\\sm\\agent\\agent_debug.log', `${new Date().toISOString()} - ${msg}\n`);
-        log(`handleNewFile called for ${event.fileName}`);
         // Skip if already uploaded locally
-        // if (this.config.isHashUploaded(event.fileHash)) {
-        //     console.log(`Skipping already uploaded file: ${event.fileName}`);
-        //     log(`Skipping already uploaded file: ${event.fileName}`);
-        //     return;
-        // }
+        if (this.config.isHashUploaded(event.fileHash)) {
+            console.log(`Skipping already uploaded file: ${event.fileName}`);
+            return;
+        }
         // Get API key for this store
         const apiKey = this.config.getApiKey(event.storeId);
         if (!apiKey) {

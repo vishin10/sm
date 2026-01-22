@@ -23,16 +23,11 @@ class FileWatcher extends events_1.EventEmitter {
      * Start watching a folder for a specific store
      */
     startWatching(watchPath, storeId) {
-        const fs = require('fs');
-        try {
-            fs.appendFileSync('c:\\dev\\sm\\agent\\agent_debug.log', `${new Date().toISOString()} - startWatching called for ${watchPath}\n`);
-        }
-        catch (e) { }
         if (this.watchers.has(watchPath)) {
             console.log(`Already watching: ${watchPath}`);
             return false;
         }
-        if (!fs.existsSync(watchPath)) {
+        if (!fs_1.default.existsSync(watchPath)) {
             console.error(`Watch path does not exist: ${watchPath}`);
             return false;
         }

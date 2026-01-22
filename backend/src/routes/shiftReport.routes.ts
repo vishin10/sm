@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { ShiftReportController } from '../controllers/shiftReport.controller';
+import { KVExplorerController } from '../controllers/kvExplorer.controller';
 import { authenticate } from '../middleware/auth.middleware';
 
 const router = Router();
@@ -44,13 +45,27 @@ router.post('/auto-crop', upload.single('file'), ShiftReportController.autoCrop)
 // Bulk delete (must come before /:id)
 router.post('/bulk-delete', ShiftReportController.bulkDelete);
 
-// Get single report
-router.get('/:id', ShiftReportController.getById);
+// ============================================
+// KV EXPLORER ENDPOINTS (must come before /:id)
+// ============================================
+
+// Get KV pairs for a specific section (paginated)
+router.get('/:id/section/:section', KVExplorerController.getSection);
+
+// Search KV pairs across all sections (paginated)
+router.get('/:id/search', KVExplorerController.search);
+
+// Get raw parsed JSON (for debugging/export)
+router.get('/:id/raw', KVExplorerController.getRaw);
+
+// Get single report with summary + section counts
+router.get('/:id', KVExplorerController.getReport);
 
 // Delete single report
 router.delete('/:id', ShiftReportController.delete);
 
-// Get summary for AI chat
+// Get summary for AI chat (legacy)
 router.get('/:id/summary', ShiftReportController.getSummary);
 
 export default router;
+

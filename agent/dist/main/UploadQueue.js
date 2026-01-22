@@ -76,15 +76,11 @@ class UploadQueue {
                     jobs.splice(i, 1);
                     i--;
                     this.store.set('pendingJobs', jobs);
-                    const fs = require('fs');
-                    fs.appendFileSync('c:\\dev\\sm\\agent\\agent_debug.log', `${new Date().toISOString()} - Upload Success: ${job.fileName}\n`);
                     if (this.onSuccess) {
                         this.onSuccess(job, result);
                     }
                 }
                 catch (error) {
-                    const fs = require('fs');
-                    fs.appendFileSync('c:\\dev\\sm\\agent\\agent_debug.log', `${new Date().toISOString()} - Upload FAILED: ${job.fileName} - ${error.message}\n`);
                     console.error(`Upload failed: ${job.fileName}`, error.message);
                     job.retryCount++;
                     if (job.retryCount >= this.maxRetries) {

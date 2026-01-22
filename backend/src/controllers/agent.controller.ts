@@ -163,41 +163,68 @@ export class AgentController {
                 data: { status: 'PROCESSING' }
             });
 
-            // Parse XML
-            const xmlContent = fileBuffer.toString('utf-8');
-            const parsedData = await xmlParser.parseShiftXML(xmlContent);
+            // Fetch store timezone for proper date handling
+            const store = await prisma.store.findUnique({
+                where: { id: storeId },
+                select: { timezone: true }
+            });
+            const storeTimezone = store?.timezone || 'America/New_York';
 
-            // Create ShiftReport using existing storage service
-            // Generate a receipt hash from the parsed data for deduplication
+            // Parse XML with new KV explorer approach
+            const xmlContent = fileBuffer.toString('utf-8');
+            const result = await xmlParser.parseShiftXML(xmlContent);
+            const { parsedJson, kvPairs, summary, vendorType, metadata, legacy } = result;
+
+            // Generate a receipt hash from the upload for deduplication
             const receiptHash = `agent_${uploadId}`;
 
             const shiftReport = await prisma.shiftReport.create({
                 data: {
                     storeId,
                     receiptHash,
-                    registerId: parsedData.registerId,
-                    operatorId: parsedData.operatorId,
-                    reportDate: parsedData.startAt ? new Date(parsedData.startAt) : new Date(),
-                    shiftStart: parsedData.startAt ? new Date(parsedData.startAt) : null,
-                    shiftEnd: parsedData.endAt ? new Date(parsedData.endAt) : null,
-                    grossSales: parsedData.totalSales,
-                    netSales: parsedData.totalSales - parsedData.refunds,
-                    refunds: parsedData.refunds,
-                    discounts: parsedData.discountTotal,
-                    taxTotal: parsedData.taxTotal,
-                    fuelSales: parsedData.fuelSales,
-                    insideSales: parsedData.nonFuelSales,
-                    cashVariance: parsedData.cashVariance,
-                    totalTransactions: parsedData.customerCount,
-                    rawText: xmlContent.substring(0, 5000), // Store first 5KB for debugging
-                    extractionMethod: 'agent_xml',
+
+                    // KV Explorer columns (dynamic schema)
+                    parsedJson,
+                    kvPairs,
+                    summary,
+                    vendorType,
+
+                    // Report metadata for daily/weekly analysis
+                    businessDate: metadata.businessDate,
+                    shiftId: metadata.shiftId,
+                    timezone: metadata.xmlTimezone || storeTimezone,
+
+                    // Metadata from legacy extraction
+                    registerId: legacy.registerId,
+                    operatorId: legacy.operatorId,
+                    reportDate: legacy.startAt ? new Date(legacy.startAt) : new Date(),
+                    shiftStart: legacy.startAt ? new Date(legacy.startAt) : null,
+                    shiftEnd: legacy.endAt ? new Date(legacy.endAt) : null,
+
+                    // Legacy columns for dashboard queries
+                    grossSales: summary.grossSales,
+                    netSales: summary.netSales,
+                    refunds: summary.refunds,
+                    discounts: summary.discounts,
+                    taxTotal: summary.taxTotal,
+                    totalTransactions: summary.totalTransactions,
+                    fuelSales: summary.fuelSales,
+                    fuelGallons: summary.fuelGallons,
+                    insideSales: summary.insideSales,
+                    cashVariance: summary.cashVariance,
+
+                    // Extraction metadata
+                    rawText: xmlContent.substring(0, 5000),
+                    extractionMethod: 'agent_xml_kv',
                     extractionConfidence: 1.0,
+
+                    // Related data (legacy tables for backward compat)
                     departments: {
-                        create: parsedData.departments.map(d => ({
+                        create: legacy.departments.map(d => ({
                             departmentName: d.departmentName,
-                            amount: d.amount
+                            amount: d.amount,
                         }))
-                    }
+                    },
                 }
             });
 
@@ -211,7 +238,7 @@ export class AgentController {
                 }
             });
 
-            Logger.info(`Agent upload ${uploadId} processed successfully, created ShiftReport ${shiftReport.id}`);
+            Logger.info(`Agent upload ${uploadId} processed successfully, created ShiftReport ${shiftReport.id} with ${kvPairs.length} KV pairs`);
         } catch (error: any) {
             Logger.error(`Failed to process agent upload ${uploadId}:`, error);
 

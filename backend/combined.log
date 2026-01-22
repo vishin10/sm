@@ -12261,3 +12261,9 @@
 {"level":"info","message":"Uploaded file to S3: agent-uploads/cmjxfotmo000b8vp9tsl8ukjk/2026-01-22T04-49-56-546Z_shift_report_002.xml","timestamp":"2026-01-22T04:49:56.625Z"}
 {"level":"info","message":"Created upload record cmkoz3jbm0008bryfk6q7pttr for shift_report_002.xml","timestamp":"2026-01-22T04:49:56.646Z"}
 {"level":"info","message":"Agent upload cmkoz3jbm0008bryfk6q7pttr processed successfully, created ShiftReport cmkoz3jcc000abryf3seqsr94","timestamp":"2026-01-22T04:49:56.656Z"}
+{"level":"info","message":"Uploaded file to S3: agent-uploads/cmjxfotmo000b8vp9tsl8ukjk/2026-01-22T19-12-32-898Z_shift_report_003.xml","timestamp":"2026-01-22T19:12:33.237Z"}
+{"level":"info","message":"Created upload record cmkptwuzj000gbryfhsekmwxn for shift_report_003.xml","timestamp":"2026-01-22T19:12:33.275Z"}
+{"level":"warn","message":"Standard parser failed or unknown format, using AI fallback","timestamp":"2026-01-22T19:12:33.381Z"}
+{"level":"info","message":"Agent upload cmkptwuzj000gbryfhsekmwxn processed successfully, created ShiftReport cmkptwzuy000ibryf0dzuzu79","timestamp":"2026-01-22T19:12:39.600Z"}
+{"level":"info","message":"Conversation cleanup job scheduled (daily at 2am)","timestamp":"2026-01-22T19:14:27.857Z"}
+{"level":"info","message":"Conversation cleanup job scheduled (daily at 2am)","timestamp":"2026-01-22T20:03:58.916Z"}
