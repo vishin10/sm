@@ -3,3 +3,9 @@ node_modules
 .env.*
 .expo
 mobile/.expo
+
+# build outputs (do not commit)
+agent/release/
+agent/dist/
+agent/out/
+agent/**/win-unpacked/
