@@ -4,7 +4,7 @@ import { S3Service } from '../services/S3Service';
 import { XMLParserService } from '../services/XMLParserService';
 import { ShiftReportStorage } from '../services/ShiftReportStorage';
 import { Logger } from '../utils/logger';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 const xmlParser = new XMLParserService();
@@ -185,8 +185,8 @@ export class AgentController {
 
                     // KV Explorer columns (dynamic schema)
                     parsedJson,
-                    kvPairs,
-                    summary,
+                    kvPairs: kvPairs ? (kvPairs as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
+                    summary: summary ? (summary as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
                     vendorType,
 
                     // Report metadata for daily/weekly analysis

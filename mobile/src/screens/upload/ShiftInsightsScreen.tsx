@@ -13,7 +13,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { colors, getThemeColors } from '../../theme/colors';
 import { useThemeStore } from '../../store/themeStore';
-import { shiftsApi } from '../../api/shifts';
+import { shiftsApi, SectionInfo } from '../../api/shifts';
+import KVExplorer from '../../components/KVExplorer';
 
 // Types matching backend ShiftReportExtract
 interface ShiftReportExtract {
@@ -112,6 +113,10 @@ export default function ShiftInsightsScreen() {
     const [reportDate, setReportDate] = useState<string | undefined>(undefined);
     const [extractionMethod, setExtractionMethod] = useState<string | undefined>(method);
 
+    // KV Explorer data (from lightweight API)
+    const [sections, setSections] = useState<SectionInfo[]>([]);
+    const [totalFields, setTotalFields] = useState(0);
+
     // Fetch full report data when viewing an existing report
     useEffect(() => {
         if (reportId && !initialExtract) {
@@ -122,91 +127,48 @@ export default function ShiftInsightsScreen() {
     const fetchReportDetails = async () => {
         try {
             setLoading(true);
-            const report = await shiftsApi.getShiftReportById(reportId!);
+            // Use new lightweight API - returns summary + sections only (no kvPairs/raw)
+            const report = await shiftsApi.getShiftReportDetail(reportId!);
 
+            // Map summary to existing extract format for UI compatibility
+            const summary = report.summary || {};
             const extractData: ShiftReportExtract = {
                 storeMetadata: {
-                    storeName: report.store?.name,
-                    registerId: report.registerId,
-                    operatorId: report.operatorId,
+                    storeName: report.storeName,
                     reportDate: report.reportDate,
                     shiftStart: report.shiftStart,
                     shiftEnd: report.shiftEnd,
                 },
                 salesSummary: {
-                    grossSales: report.grossSales ? parseFloat(report.grossSales) : undefined,
-                    netSales: report.netSales ? parseFloat(report.netSales) : undefined,
-                    refunds: report.refunds ? parseFloat(report.refunds) : undefined,
-                    discounts: report.discounts ? parseFloat(report.discounts) : undefined,
-                    taxTotal: report.taxTotal ? parseFloat(report.taxTotal) : undefined,
-                    totalTransactions: report.totalTransactions,
-                    customersCount: report.totalTransactions,
+                    grossSales: summary.grossSales,
+                    netSales: summary.netSales,
+                    refunds: summary.refunds,
+                    discounts: summary.discounts,
+                    taxTotal: summary.taxTotal,
+                    totalTransactions: summary.totalTransactions,
+                    customersCount: summary.totalTransactions,
                 },
                 fuel: {
-                    fuelSales: report.fuelSales ? parseFloat(report.fuelSales) : undefined,
-                    fuelGross: report.fuelGross ? parseFloat(report.fuelGross) : undefined,
-                    fuelGallons: report.fuelGallons ?? undefined,
+                    fuelSales: summary.fuelSales,
+                    fuelGallons: summary.fuelGallons,
                 },
                 insideSales: {
-                    insideSales: report.insideSales ? parseFloat(report.insideSales) : undefined,
-                    merchandiseSales: report.merchandiseSales ? parseFloat(report.merchandiseSales) : undefined,
-                    prepaysInitiated: report.prepaysInitiated ? parseFloat(report.prepaysInitiated) : undefined,
-                    prepaysPumped: report.prepaysPumped ? parseFloat(report.prepaysPumped) : undefined,
+                    insideSales: summary.insideSales,
                 },
                 balances: {
-                    beginningBalance: report.beginningBalance ? parseFloat(report.beginningBalance) : undefined,
-                    endingBalance: report.endingBalance ? parseFloat(report.endingBalance) : undefined,
-                    closingAccountability: report.closingAccountability ? parseFloat(report.closingAccountability) : undefined,
-                    cashierCounted: report.cashierCounted ? parseFloat(report.cashierCounted) : undefined,
-                    cashVariance: report.cashVariance ? parseFloat(report.cashVariance) : undefined,
+                    cashVariance: summary.cashVariance,
                 },
-                tenders: {
-                    cash: {
-                        count: report.cashCount ?? undefined,
-                        amount: report.cashAmount ? parseFloat(report.cashAmount) : undefined,
-                    },
-                    credit: {
-                        count: report.creditCount ?? undefined,
-                        amount: report.creditAmount ? parseFloat(report.creditAmount) : undefined,
-                    },
-                    debit: {
-                        count: report.debitCount ?? undefined,
-                        amount: report.debitAmount ? parseFloat(report.debitAmount) : undefined,
-                    },
-                    other: {
-                        count: report.otherTenderCount ?? undefined,
-                        amount: report.otherTenderAmount ? parseFloat(report.otherTenderAmount) : undefined,
-                    },
-                    totalTenders: report.totalTenders ? parseFloat(report.totalTenders) : undefined,
-                },
-                safeActivity: {
-                    safeDropAmount: report.safeDropAmount ? parseFloat(report.safeDropAmount) : undefined,
-                    safeLoanAmount: report.safeLoanAmount ? parseFloat(report.safeLoanAmount) : undefined,
-                    paidInAmount: report.paidInAmount ? parseFloat(report.paidInAmount) : undefined,
-                    paidOutAmount: report.paidOutAmount ? parseFloat(report.paidOutAmount) : undefined,
-                },
-                departmentSales: report.departments?.map((d: any) => ({
-                    departmentName: d.departmentName,
-                    quantity: d.quantity ?? undefined,
-                    amount: parseFloat(d.amount),
-                })) || [],
-                itemSales: report.items?.map((i: any) => ({
-                    itemName: i.itemName,
-                    quantity: i.quantity ?? undefined,
-                    amount: parseFloat(i.amount),
-                })) || [],
-                exceptions: report.exceptions?.map((e: any) => ({
-                    type: e.type,
-                    count: e.count,
-                    amount: e.amount ? parseFloat(e.amount) : undefined,
-                })) || [],
+                // Tenders, departments, items, exceptions are now lazy-loaded via KVExplorer
                 extractionMethod: report.extractionMethod,
-                extractionConfidence: report.extractionConfidence,
             };
 
             setExtract(extractData);
             setReportDate(report.reportDate);
             setExtractionMethod(report.extractionMethod);
+
+            // Store sections for KVExplorer
+            setSections(report.sections || []);
+            setTotalFields(report.totalFields || 0);
         } catch (error) {
             console.error('Failed to fetch report details:', error);
         } finally {
@@ -415,6 +377,15 @@ export default function ShiftInsightsScreen() {
                             ))}
                         </View>
                     </View>
+                )}
+
+                {/* KV Explorer - shows when viewing existing reports */}
+                {reportId && sections.length > 0 && (
+                    <KVExplorer
+                        reportId={reportId}
+                        sections={sections}
+                        totalFields={totalFields}
+                    />
                 )}
 
                 <View style={{ height: 40 }} />

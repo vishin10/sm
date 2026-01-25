@@ -100,6 +100,7 @@ export interface FlattenResult {
 }
 
 export interface ReportSummary {
+    // KPI fields
     grossSales: number | null;
     netSales: number | null;
     fuelSales: number | null;
@@ -110,6 +111,10 @@ export interface ReportSummary {
     refunds: number | null;
     discounts: number | null;
     fuelGallons: number | null;
+
+    // Section index (computed at ingest, used for lightweight API responses)
+    sectionsIndex?: SectionCount[];
+    totalFields?: number;
 }
 
 /**
@@ -313,6 +318,7 @@ export function getSectionCounts(kvPairs: KVPair[]): SectionCount[] {
 /**
  * Extract summary KPIs from KV pairs
  * Maps various field names to canonical summary fields
+ * Also computes sectionsIndex for lightweight API responses
  */
 export function extractSummary(kvPairs: KVPair[]): ReportSummary {
     const findValue = (patterns: string[]): number | null => {
@@ -330,7 +336,11 @@ export function extractSummary(kvPairs: KVPair[]): ReportSummary {
         return null;
     };
 
+    // Compute section counts for sectionsIndex
+    const sectionsIndex = getSectionCounts(kvPairs);
+
     return {
+        // KPI fields
         grossSales: findValue(['GrossSales', 'TotalSales', 'TotalGrossSales']),
         netSales: findValue(['NetSales', 'NetTotalSales']),
         fuelSales: findValue(['FuelSales', 'FuelGrossSales', 'TotalFuelSales']),
@@ -341,6 +351,9 @@ export function extractSummary(kvPairs: KVPair[]): ReportSummary {
         refunds: findValue(['Refunds', 'RefundTotal', 'TotalRefunds']),
         discounts: findValue(['Discounts', 'DiscountTotal', 'TotalDiscounts']),
         fuelGallons: findValue(['FuelGallons', 'TotalGallons', 'GallonsSold']),
+        // Section index for lightweight API
+        sectionsIndex,
+        totalFields: kvPairs.length,
     };
 }
 

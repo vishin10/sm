@@ -12267,3 +12267,23 @@
 {"level":"info","message":"Agent upload cmkptwuzj000gbryfhsekmwxn processed successfully, created ShiftReport cmkptwzuy000ibryf0dzuzu79","timestamp":"2026-01-22T19:12:39.600Z"}
 {"level":"info","message":"Conversation cleanup job scheduled (daily at 2am)","timestamp":"2026-01-22T19:14:27.857Z"}
 {"level":"info","message":"Conversation cleanup job scheduled (daily at 2am)","timestamp":"2026-01-22T20:03:58.916Z"}
+{"level":"info","message":"Bulk deleted 4 shift reports","timestamp":"2026-01-22T20:11:36.202Z"}
+{"level":"info","message":"Bulk deleted 4 reports for store cmjxfotmo000b8vp9tsl8ukjk","timestamp":"2026-01-22T20:11:36.202Z"}
+{"level":"info","message":"Conversation cleanup job scheduled (daily at 2am)","timestamp":"2026-01-23T02:26:03.590Z"}
+{"level":"info","message":"Conversation cleanup job scheduled (daily at 2am)","timestamp":"2026-01-23T02:29:19.696Z"}
+{"level":"info","message":"Conversation cleanup job scheduled (daily at 2am)","timestamp":"2026-01-25T16:44:28.270Z"}
+{"level":"info","message":"Conversation cleanup job scheduled (daily at 2am)","timestamp":"2026-01-25T17:56:22.136Z"}
+{"level":"info","message":"Conversation cleanup job scheduled (daily at 2am)","timestamp":"2026-01-25T18:00:30.753Z"}
+{"level":"info","message":"Deleted shift report: cmkq9i8420006qee4etc9rmtk","timestamp":"2026-01-25T18:04:42.684Z"}
+{"level":"info","message":"Deleted shift report cmkq9i8420006qee4etc9rmtk for store cmjxfotmo000b8vp9tsl8ukjk","timestamp":"2026-01-25T18:04:42.685Z"}
+{"level":"info","message":"Deleted shift report: cmkq9i7y70001qee4u6rfxsa8","timestamp":"2026-01-25T18:04:47.264Z"}
+{"level":"info","message":"Deleted shift report cmkq9i7y70001qee4u6rfxsa8 for store cmjxfotmo000b8vp9tsl8ukjk","timestamp":"2026-01-25T18:04:47.266Z"}
+{"level":"info","message":"Conversation cleanup job scheduled (daily at 2am)","timestamp":"2026-01-25T18:29:30.283Z"}
+{"level":"info","message":"Conversation cleanup job scheduled (daily at 2am)","timestamp":"2026-01-25T20:54:58.459Z"}
+{"level":"info","message":"Conversation cleanup job scheduled (daily at 2am)","timestamp":"2026-01-25T21:11:02.962Z"}
+{"level":"info","message":"Conversation cleanup job scheduled (daily at 2am)","timestamp":"2026-01-25T21:19:27.646Z"}
+{"level":"info","message":"Conversation cleanup job scheduled (daily at 2am)","timestamp":"2026-01-25T21:22:26.726Z"}
+{"level":"info","message":"Conversation cleanup job scheduled (daily at 2am)","timestamp":"2026-01-25T21:23:44.411Z"}
+{"level":"info","message":"Conversation cleanup job scheduled (daily at 2am)","timestamp":"2026-01-25T21:23:51.100Z"}
+{"level":"info","message":"Conversation cleanup job scheduled (daily at 2am)","timestamp":"2026-01-25T21:24:01.256Z"}
+{"level":"info","message":"Conversation cleanup job scheduled (daily at 2am)","timestamp":"2026-01-25T21:24:39.917Z"}

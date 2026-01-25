@@ -1,7 +1,8 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
 import { Logger } from '../utils/logger';
 import { ShiftReportExtract, ShiftReportSummary } from '../types/shiftReportExtract.types';
+import { extractSummary, flattenWithSections, ReportSummary } from './KVFlattenService';
 
 const prisma = new PrismaClient();
 
@@ -70,6 +71,60 @@ export class ShiftReportStorage {
             reportDate.getMonth(),
             reportDate.getDate()
         );
+
+        // Build KV Explorer payload from AI extraction (best-effort)
+        const summaryFromExtract: ReportSummary = {
+            grossSales: extract.salesSummary?.grossSales ?? null,
+            netSales: extract.salesSummary?.netSales ?? null,
+            fuelSales: extract.fuel?.fuelSales ?? null,
+            insideSales: extract.insideSales?.insideSales ?? null,
+            totalTransactions: extract.salesSummary?.totalTransactions ?? null,
+            cashVariance: extract.balances?.cashVariance ?? null,
+            taxTotal: extract.salesSummary?.taxTotal ?? null,
+            refunds: extract.salesSummary?.refunds ?? null,
+            discounts: extract.salesSummary?.discounts ?? null,
+            fuelGallons: extract.fuel?.fuelGallons ?? null,
+        };
+
+        let parsedJson: any = null;
+        let kvPairs: any[] | null = null;
+        let summary: ReportSummary | null = null;
+
+        const kvSource =
+            rawExtraction && typeof rawExtraction === 'object'
+                ? { ...rawExtraction }
+                : extract && typeof extract === 'object'
+                    ? { ...extract }
+                    : null;
+
+        if (kvSource) {
+            // Avoid storing huge rawText inside kvPairs
+            if ('rawText' in kvSource) {
+                delete (kvSource as any).rawText;
+            }
+
+            parsedJson = kvSource;
+            const flattened = flattenWithSections(kvSource);
+            kvPairs = flattened.kvPairs;
+
+            const autoSummary = extractSummary(kvPairs);
+            summary = {
+                grossSales: autoSummary.grossSales ?? summaryFromExtract.grossSales ?? null,
+                netSales: autoSummary.netSales ?? summaryFromExtract.netSales ?? null,
+                fuelSales: autoSummary.fuelSales ?? summaryFromExtract.fuelSales ?? null,
+                insideSales: autoSummary.insideSales ?? summaryFromExtract.insideSales ?? null,
+                totalTransactions: autoSummary.totalTransactions ?? summaryFromExtract.totalTransactions ?? null,
+                cashVariance: autoSummary.cashVariance ?? summaryFromExtract.cashVariance ?? null,
+                taxTotal: autoSummary.taxTotal ?? summaryFromExtract.taxTotal ?? null,
+                refunds: autoSummary.refunds ?? summaryFromExtract.refunds ?? null,
+                discounts: autoSummary.discounts ?? summaryFromExtract.discounts ?? null,
+                fuelGallons: autoSummary.fuelGallons ?? summaryFromExtract.fuelGallons ?? null,
+                sectionsIndex: autoSummary.sectionsIndex,
+                totalFields: autoSummary.totalFields,
+            };
+        } else {
+            summary = summaryFromExtract;
+        }
 
 
         // Build the data object (shared between create and update)
@@ -143,6 +198,11 @@ export class ShiftReportStorage {
 
             // 🔥 NEW: Store complete AI extraction for natural language queries
             fullExtraction: rawExtraction ? JSON.stringify(rawExtraction) : null,
+
+            // KV Explorer columns (best-effort for AI uploads)
+            parsedJson: parsedJson ?? Prisma.JsonNull,
+            kvPairs: kvPairs ?? Prisma.JsonNull,
+            summary: summary ? (summary as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         };
 
         if (existing) {
@@ -306,7 +366,8 @@ export class ShiftReportStorage {
     }
 
     /**
-     * List shift reports for a store
+     * List shift reports for a store (LIGHTWEIGHT - no heavy columns)
+     * Returns only fields needed for report list cards
      */
     static async listByStore(storeId: string, options?: {
         startDate?: Date;
@@ -325,8 +386,37 @@ export class ShiftReportStorage {
             orderBy: { reportDate: 'desc' },
             take: options?.limit || 50,
             skip: options?.offset || 0,
-            include: {
-                departments: true,
+            select: {
+                // Core identifiers
+                id: true,
+                storeId: true,
+
+                // Dates for display
+                businessDate: true,
+                reportDate: true,
+                shiftStart: true,
+                shiftEnd: true,
+
+                // KPIs for report cards
+                grossSales: true,
+                netSales: true,
+                fuelSales: true,
+                insideSales: true,
+                cashVariance: true,
+                totalTransactions: true,
+
+                // Metadata
+                vendorType: true,
+                uploadCount: true,
+                lastUploadedAt: true,
+                extractionMethod: true,
+
+                // Store name for display
+                store: {
+                    select: { name: true }
+                }
+
+                // EXCLUDED: rawText, parsedJson, kvPairs, fullExtraction, departments, items, exceptions
             }
         });
     }

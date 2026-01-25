@@ -55,8 +55,10 @@ router.get('/:id/section/:section', KVExplorerController.getSection);
 // Search KV pairs across all sections (paginated)
 router.get('/:id/search', KVExplorerController.search);
 
-// Get raw parsed JSON (for debugging/export)
-router.get('/:id/raw', KVExplorerController.getRaw);
+// Raw data endpoints (for debugging/export)
+router.get('/:id/raw', KVExplorerController.getRaw);           // DEPRECATED
+router.get('/:id/raw-text', KVExplorerController.getRawText);  // Returns rawText only
+router.get('/:id/raw-json', KVExplorerController.getRawJson);  // Returns parsedJson only
 
 // Get single report with summary + section counts
 router.get('/:id', KVExplorerController.getReport);
